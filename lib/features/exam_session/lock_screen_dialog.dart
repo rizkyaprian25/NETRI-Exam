@@ -38,7 +38,7 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isLocked = widget.strikeCount >= 2;
+    final isLocked = widget.strikeCount >= 1 || widget.reason.contains('PERINGATAN EXAMBRO');
 
     return PopScope(
       canPop: false, // Dilarang menutup dialog lewat gesture back

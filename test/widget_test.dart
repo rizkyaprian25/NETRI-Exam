@@ -1,4 +1,4 @@
-// Smoke-Test Kritis untuk NETRI Exam (SOP SoftwareEngineer.md Seksi 9)
+// Smoke-Test Kritis untuk Exambro Lintas Platform (SOP SoftwareEngineer.md Seksi 9)
 // Memvalidasi bootstrap antarmuka, inisialisasi tema, dan kontrak data
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,19 +7,18 @@ import 'package:netri_exam/contracts/models.dart';
 import 'package:netri_exam/core/theme/tokens.g.dart';
 
 void main() {
-  group('NETRI Exam Smoke Checks', () {
-    testWidgets('App Shell berhasil dimuat dan menampilkan halaman login', (WidgetTester tester) async {
+  group('Exambro Smoke Checks', () {
+    testWidgets('App Shell berhasil dimuat dan menampilkan beranda Exambro', (WidgetTester tester) async {
       await tester.pumpWidget(const NetriExamApp());
       await tester.pumpAndSettle();
 
-      // Memastikan brand title dan elemen input muncul tanpa exception
-      expect(find.text('NETRI Exam'), findsOneWidget);
-      expect(find.text('Portal Ujian Terkunci Institusi'), findsOneWidget);
-      expect(find.text('Masuk ke Ujian'), findsOneWidget);
+      // Memastikan brand title dan elemen input Exambro muncul tanpa exception
+      expect(find.text('EXAMBRO'), findsOneWidget);
+      expect(find.text('Android & iOS Compatible'), findsOneWidget);
+      expect(find.text('Buka Ujian Terkunci'), findsOneWidget);
     });
 
     test('Validasi Desain Token Semantik (Apple HIG Contrast Safety)', () {
-      // Memastikan token tinggi dan dimensi memenuhi standar
       expect(NetriExamMetrics.minTouchTarget, greaterThanOrEqualTo(44.0));
       expect(NetriExamMetrics.examBarHeight, equals(52.0));
       expect(NetriExamMetrics.warningThresholdSeconds, equals(300));

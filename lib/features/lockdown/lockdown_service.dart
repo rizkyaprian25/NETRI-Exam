@@ -1,5 +1,6 @@
-// Service Penguncian Perangkat (Lockdown Engine) & Platform Channel
-// Mengontrol FLAG_SECURE, Lock Task Mode, deteksi kehilangan fokus, dan masa tenggang 10 detik
+// Service Penguncian Perangkat (Exambro Lockdown Engine)
+// Mendukung Android (FLAG_SECURE, Immersive Fullscreen, Lock Task)
+// dan iOS (Guided Access, Screenshot/Screen Recording Detection, Resign Active Shield)
 
 import 'dart:async';
 import 'package:flutter/services.dart';
@@ -9,7 +10,9 @@ import '../../core/storage/offline_queue.dart';
 class LockdownService {
   static final LockdownService _instance = LockdownService._internal();
   factory LockdownService() => _instance;
-  LockdownService._internal();
+  LockdownService._internal() {
+    _channel.setMethodCallHandler(_handleNativeCall);
+  }
 
   // Platform channel untuk kontrol native Android & iOS
   static const MethodChannel _channel = MethodChannel('com.netri.exam/lockdown');
@@ -24,20 +27,35 @@ class LockdownService {
   void Function(int strikeCount, String reason)? onStrikeTriggered;
   void Function()? onLockRequired;
 
-  /// Memulai mode penguncian ujian
+  Future<void> _handleNativeCall(MethodCall call) async {
+    if (!_isLockdownActive) return;
+
+    switch (call.method) {
+      case 'onUserLeaveHint':
+        // Terdeteksi dari Android/iOS saat pengguna mencoba menekan Home, Recent Apps, atau gesture keluar
+        await handleAppResignedActive();
+        break;
+      case 'onScreenshotDetected':
+        // Terdeteksi tangkapan layar atau rekam layar dari iOS/Android
+        await recordScreenshotAttempt();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// Memulai mode penguncian ujian ala Exambro
   Future<void> enableLockdown(String sessionId) async {
     _currentSessionId = sessionId;
     _isLockdownActive = true;
     _strikeCount = 0;
 
     try {
-      // Mengaktifkan proteksi screenshot & lock task di native Android/iOS
+      // Mengaktifkan proteksi screenshot & immersive lock di Android/iOS
       await _channel.invokeMethod('enableSecureWindow');
     } on MissingPluginException {
-      // Fallback anggun jika dijalankan di simulator/platform tanpa native plugin
-    } catch (e) {
-      // Fail-open
-    }
+      // Fallback jika di desktop simulator
+    } catch (_) {}
   }
 
   /// Menonaktifkan mode penguncian setelah ujian selesai
@@ -48,6 +66,27 @@ class LockdownService {
     try {
       await _channel.invokeMethod('disableSecureWindow');
     } catch (_) {}
+  }
+
+  /// Terdeteksi saat aplikasi kehilangan fokus atau berpindah ke latar belakang
+  Future<void> handleAppResignedActive() async {
+    if (!_isLockdownActive || _currentSessionId == null) return;
+
+    _strikeCount++;
+    final event = ViolationEventModel(
+      id: 'evt_leave_${DateTime.now().millisecondsSinceEpoch}',
+      sessionId: _currentSessionId!,
+      type: ViolationType.appExit,
+      severity: ViolationSeverity.danger,
+      clientTimestamp: DateTime.now(),
+      isExcused: false,
+      notes: 'Terdeteksi berpindah aplikasi atau menekan tombol home (Strike $_strikeCount)',
+    );
+
+    await OfflineViolationQueue().enqueue(event);
+
+    // Khas Exambro: Langsung kunci sesi dan minta pengawas memasukkan PIN
+    onLockRequired?.call();
   }
 
   /// Menangani siklus hidup aplikasi saat berpindah ke latar belakang (Background/Paused)
@@ -64,16 +103,14 @@ class LockdownService {
     final durationSeconds = resumeTime.difference(_appPausedTime!).inSeconds;
     _appPausedTime = null;
 
-    // Evaluasi Masa Tenggang 10 Detik (SOP PRD Seksi 7.7)
-    // Durasi < 10 detik dianggap interupsi sah (misal: telepon masuk darurat / panel notifikasi)
-    final bool isExcused = durationSeconds <= 10;
+    // Evaluasi durasi keluar
+    final bool isExcused = durationSeconds <= 3; // Toleransi kilat sistem 3 detik
     final severity = isExcused ? ViolationSeverity.info : ViolationSeverity.warning;
 
     if (!isExcused) {
       _strikeCount++;
     }
 
-    // Catat kejadian pelanggaran ke antrean offline
     final event = ViolationEventModel(
       id: 'evt_${DateTime.now().millisecondsSinceEpoch}',
       sessionId: _currentSessionId!,
@@ -83,18 +120,14 @@ class LockdownService {
       durationSeconds: durationSeconds,
       isExcused: isExcused,
       notes: isExcused
-          ? 'Interupsi sah $durationSeconds detik (di dalam masa tenggang 10s)'
+          ? 'Interupsi kilat $durationSeconds detik'
           : 'Aplikasi ditinggalkan selama $durationSeconds detik (Strike $_strikeCount)',
     );
 
     await OfflineViolationQueue().enqueue(event);
 
     if (!isExcused) {
-      if (_strikeCount >= 2) {
-        onLockRequired?.call();
-      } else {
-        onStrikeTriggered?.call(_strikeCount, 'Aplikasi ujian ditinggalkan selama $durationSeconds detik.');
-      }
+      onLockRequired?.call();
     }
   }
 
@@ -110,17 +143,17 @@ class LockdownService {
       severity: ViolationSeverity.danger,
       clientTimestamp: DateTime.now(),
       isExcused: false,
-      notes: 'Upaya pengambilan tangkapan layar terdeteksi',
+      notes: 'Upaya pengambilan tangkapan layar terdeteksi dan diblokir',
     );
 
     await OfflineViolationQueue().enqueue(event);
-    onStrikeTriggered?.call(_strikeCount, 'Tangkapan layar terdeteksi dan diblokir.');
+    onLockRequired?.call();
   }
 
   int get currentStrikeCount => _strikeCount;
-  bool get isLocked => _strikeCount >= 2;
+  bool get isLocked => _strikeCount >= 1;
 
-  /// Membuka kunci setelah aksi pengawas
+  /// Membuka kunci setelah aksi pengawas memasukkan PIN
   void unlockByProctor() {
     _strikeCount = 0;
   }

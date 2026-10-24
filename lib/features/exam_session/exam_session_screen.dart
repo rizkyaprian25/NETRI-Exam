@@ -1,6 +1,6 @@
-// Layar Sesi Ujian Terkunci (Secure Google Form Runtime)
-// Mengintegrasikan WebView dengan whitelist domain, ExamBar, dan Lockdown Engine
-// Mendukung fallback pratinjau desktop/web untuk pengujian cepat lintas platform
+// Layar Sesi Ujian Terkunci (Exambro 100% Android & iOS Mode)
+// Mengintegrasikan WebView dengan whitelist domain, proteksi anti-copy JS,
+// penguncian tombol keluar via PIN Pengawas, dan Lockdown Engine
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -31,6 +31,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   Timer? _heartbeatTimer;
   bool _isLoadingForm = true;
   ConnectionStatus _connectionStatus = ConnectionStatus.connected;
+  bool _isLockDialogShowing = false;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -51,7 +52,6 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     if (_isNativeMobilePlatform) {
       _initWebView();
     } else {
-      // Pada Desktop/Web (mode pengujian), WebView langsung ditandai siap
       _isLoadingForm = false;
     }
 
@@ -63,29 +63,18 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
-    lockdown.onStrikeTriggered = (strike, reason) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => LockScreenDialog(
-          strikeCount: strike,
-          reason: reason,
-          onProctorUnlocked: () => Navigator.of(ctx).pop(),
-        ),
-      );
-    };
-
     lockdown.onLockRequired = () {
-      if (!mounted) return;
+      if (!mounted || _isLockDialogShowing) return;
+      _isLockDialogShowing = true;
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (ctx) => LockScreenDialog(
           strikeCount: 2,
-          reason: 'Batas toleransi interupsi terlampaui. Sesi dikunci demi keamanan.',
+          reason: 'PERINGATAN EXAMBRO: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
           onProctorUnlocked: () {
             lockdown.unlockByProctor();
+            _isLockDialogShowing = false;
             Navigator.of(ctx).pop();
           },
         ),
@@ -105,18 +94,25 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             },
             onPageFinished: (String url) {
               setState(() => _isLoadingForm = false);
+              _injectAntiCopyProtection();
               _checkIfFormSubmitted(url);
             },
             onNavigationRequest: (NavigationRequest request) {
               final uri = Uri.tryParse(request.url);
               if (uri == null) return NavigationDecision.prevent;
 
-              // Memeriksa apakah domain termasuk dalam Whitelist Google Form
+              // Whitelist domain Google Forms
               final isAllowed = widget.session.allowedDomains.any((domain) =>
                   uri.host == domain || uri.host.endsWith('.$domain'));
 
               if (!isAllowed) {
-                debugPrint('[SecureWebView] Navigasi luar diblokir: ${request.url}');
+                debugPrint('[ExambroWebView] Navigasi luar diblokir: ${request.url}');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Akses ke tautan luar dilarang selama ujian berlangsung.'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
                 return NavigationDecision.prevent;
               }
               return NavigationDecision.navigate;
@@ -124,12 +120,29 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
           ),
         );
 
-      // Muat tautan Google Form yang dirilis server
       _webViewController!.loadRequest(Uri.parse(widget.session.formUrl));
     } catch (e) {
-      debugPrint('[SecureWebView] Mode fallback aktif: $e');
+      debugPrint('[ExambroWebView] Mode fallback aktif: $e');
       setState(() => _isLoadingForm = false);
     }
+  }
+
+  /// Menyuntikkan skrip anti-copy, anti-seleksi, dan nonaktifkan menu konteks (Khas Exambro)
+  void _injectAntiCopyProtection() {
+    if (_webViewController == null) return;
+    const jsScript = '''
+      (function() {
+        document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; });
+        document.addEventListener('selectstart', function(e) { e.preventDefault(); return false; });
+        document.addEventListener('copy', function(e) { e.preventDefault(); return false; });
+        document.addEventListener('cut', function(e) { e.preventDefault(); return false; });
+        document.addEventListener('paste', function(e) { e.preventDefault(); return false; });
+        var style = document.createElement('style');
+        style.innerHTML = '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }';
+        document.head.appendChild(style);
+      })();
+    ''';
+    _webViewController!.runJavaScript(jsScript).catchError((_) {});
   }
 
   void _startTimer() {
@@ -163,9 +176,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     });
   }
 
-  // Mendeteksi halaman konfirmasi pengiriman Google Form
   void _checkIfFormSubmitted(String url) {
-    if (url.contains('formResponse') || url.contains('viewform?embedded=true&finish=1')) {
+    if (url.contains('formResponse') || url.contains('finish=1')) {
       _completeExam();
     }
   }
@@ -206,9 +218,66 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
+  /// Dialog verifikasi PIN Pengawas untuk mengakhiri atau keluar dari ujian (Standar Wajib Exambro)
+  void _promptProctorExitDialog() {
+    final pinController = TextEditingController();
+    bool isError = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Keluar Ujian (Otorisasi Pengawas)'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Siswa dilarang menutup aplikasi sendiri. Minta pengawas memasukkan PIN untuk mengakhiri sesi:',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: pinController,
+                  keyboardType: TextInputType.number,
+                  obscureText: true,
+                  maxLength: 4,
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    hintText: 'PIN Pengawas',
+                    counterText: '',
+                    errorText: isError ? 'PIN Pengawas Salah' : null,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Kembali ke Soal'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  // PIN default pengawas: "1234"
+                  if (pinController.text.trim() == '1234') {
+                    Navigator.of(ctx).pop();
+                    _completeExam();
+                  } else {
+                    setDialogState(() => isError = true);
+                  }
+                },
+                child: const Text('Konfirmasi Keluar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       LockdownService().handleAppPaused();
     } else if (state == AppLifecycleState.resumed) {
       LockdownService().handleAppResumed();
@@ -229,30 +298,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        // Dialog konfirmasi agar siswa tidak keluar tak sengaja
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Keluar dari Ujian?'),
-            content: const Text(
-              'Ujian sedang berjalan. Keluar dari halaman ini akan dicatat sebagai pelanggaran oleh pengawas.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Batal & Lanjut Ujian'),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _completeExam();
-                },
-                child: const Text('Selesai Ujian'),
-              ),
-            ],
-          ),
-        );
+        // Pencegahan tombol kembali: Wajib memasukkan PIN Pengawas
+        _promptProctorExitDialog();
       },
       child: Scaffold(
         appBar: ExamBar(
@@ -261,35 +308,12 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
           onCallProctor: () {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Panggilan terkirim. Pengawas ruang sedang menuju meja Anda.'),
+                content: Text('Panggilan terkirim. Pengawas sedang menuju meja Anda.'),
                 duration: Duration(seconds: 3),
               ),
             );
           },
-          onFinishEarly: () {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Selesaikan Ujian Sekarang?'),
-                content: const Text(
-                  'Pastikan Anda telah menekan tombol "Kirim/Submit" di Google Form sebelum mengakhiri sesi.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Belum, Periksa Dulu'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _completeExam();
-                    },
-                    child: const Text('Ya, Saya Sudah Kirim'),
-                  ),
-                ],
-              ),
-            );
-          },
+          onFinishEarly: _promptProctorExitDialog,
         ),
         body: _buildExamBody(),
       ),
@@ -309,7 +333,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       );
     }
 
-    // Panel Simulator / Fallback Pratinjau untuk Desktop & Web
+    // Panel Simulator untuk Desktop & Web
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
@@ -324,17 +348,17 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   color: NetriColors.brandLight.withAlpha(20),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.language_rounded, size: 48, color: NetriColors.brandLight),
+                child: const Icon(Icons.lock_clock_rounded, size: 48, color: NetriColors.brandLight),
               ),
               const SizedBox(height: NetriSpacing.space4),
               const Text(
-                'Runtime Google Form Terkunci',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                'Exambro Lintas Platform Aktif',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: NetriSpacing.space2),
               Text(
-                'Di perangkat mobile (Android/iOS), lembar Google Form otomatis dimuat di dalam jendela native yang terenkripsi dan terproteksi FLAG_SECURE.',
+                'Di Android & iOS, Google Form tampil 100% fullscreen dengan proteksi anti-screenshot, anti-copy teks, dan penguncian tombol home.',
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade700, height: 1.4),
                 textAlign: TextAlign.center,
               ),
@@ -352,8 +376,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
               ),
               const SizedBox(height: NetriSpacing.space6),
 
-              // Tombol Uji Coba Cepat Fitur Pengawasan
-              const Text('Uji Coba Pengawasan & Simulasi Alur:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text('Simulasi Pengujian Sistem Keamanan:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: NetriSpacing.space3),
               Wrap(
                 spacing: NetriSpacing.space2,
@@ -366,20 +389,14 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     onPressed: () => LockdownService().recordScreenshotAttempt(),
                   ),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.app_blocking_rounded, size: 18),
-                    label: const Text('Simulasi Pindah Tab (>10s)'),
-                    onPressed: () {
-                      LockdownService().handleAppPaused();
-                      // Simulasi kembali setelah 14 detik (melebihi toleransi 10s)
-                      Future.delayed(const Duration(milliseconds: 100), () {
-                        LockdownService().handleAppResumed();
-                      });
-                    },
+                    icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                    label: const Text('Simulasi Switch App'),
+                    onPressed: () => LockdownService().handleAppResignedActive(),
                   ),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.check_circle_outline, size: 18),
-                    label: const Text('Kirim Jawaban & Selesai'),
-                    onPressed: _completeExam,
+                    icon: const Icon(Icons.lock_open_rounded, size: 18),
+                    label: const Text('Keluar (Minta PIN)'),
+                    onPressed: _promptProctorExitDialog,
                   ),
                 ],
               ),
