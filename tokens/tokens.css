@@ -1,0 +1,60 @@
+/* GENERATED CSS VARIABLES - SSOT: tokens/tokens.json */
+:root {
+  --netri-color-bg: #FAFAF7;
+  --netri-color-surface: #FFFFFF;
+  --netri-color-surface-raised: #FFFFFF;
+  --netri-color-border: #E4E7EC;
+  --netri-color-text-primary: #14181F;
+  --netri-color-text-secondary: #4A5260;
+  --netri-color-brand: #1A4FD6;
+  --netri-color-brand-surface: #F0F4FF;
+  --netri-color-state-success: #1B7F4B;
+  --netri-color-state-warning: #B25E00;
+  --netri-color-state-danger: #C62828;
+  --netri-space-0: 0px;
+  --netri-space-1: 4px;
+  --netri-space-2: 8px;
+  --netri-space-3: 12px;
+  --netri-space-4: 16px;
+  --netri-space-5: 20px;
+  --netri-space-6: 24px;
+  --netri-space-8: 32px;
+  --netri-space-10: 40px;
+  --netri-space-12: 48px;
+  --netri-space-16: 64px;
+  --netri-radius-none: 0px;
+  --netri-radius-sm: 8px;
+  --netri-radius-md: 12px;
+  --netri-radius-lg: 16px;
+  --netri-radius-full: 9999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --netri-color-bg: #0E1116;
+    --netri-color-surface: #171B22;
+    --netri-color-surface-raised: #344054;
+    --netri-color-border: #344054;
+    --netri-color-text-primary: #F2F4F7;
+    --netri-color-text-secondary: #98A2B3;
+    --netri-color-brand: #7AA2FF;
+    --netri-color-brand-surface: #081A4C;
+    --netri-color-state-success: #5FD39A;
+    --netri-color-state-warning: #F2B25C;
+    --netri-color-state-danger: #FF8A80;
+  }
+}
+
+[data-theme='dark'] {
+    --netri-color-bg: #0E1116;
+    --netri-color-surface: #171B22;
+    --netri-color-surface-raised: #344054;
+    --netri-color-border: #344054;
+    --netri-color-text-primary: #F2F4F7;
+    --netri-color-text-secondary: #98A2B3;
+    --netri-color-brand: #7AA2FF;
+    --netri-color-brand-surface: #081A4C;
+    --netri-color-state-success: #5FD39A;
+    --netri-color-state-warning: #F2B25C;
+    --netri-color-state-danger: #FF8A80;
+}

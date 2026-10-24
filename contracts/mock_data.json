@@ -1,0 +1,66 @@
+{
+  "institution": {
+    "id": "inst_01",
+    "name": "SMA Negeri 1 Prestasi Nusantara",
+    "code": "SMAN1-PN",
+    "brand_color": "#1A4FD6",
+    "created_at": "2026-10-01T08:00:00Z"
+  },
+  "users": [
+    {
+      "id": "usr_s01",
+      "institution_id": "inst_01",
+      "nis_or_nip": "20261001",
+      "name": "Ahmad Fauzan Pratama",
+      "role": "student",
+      "device_id": "dev_android_98a7bc"
+    },
+    {
+      "id": "usr_p01",
+      "institution_id": "inst_01",
+      "nis_or_nip": "19850101",
+      "name": "Budi Santoso, S.Pd (Pengawas)",
+      "role": "proctor"
+    }
+  ],
+  "exams": [
+    {
+      "id": "exam_math_01",
+      "institution_id": "inst_01",
+      "title": "Penilaian Tengah Semester - Matematika Wajib Kelas XII",
+      "subject": "Matematika",
+      "form_url_template": "https://docs.google.com/forms/d/e/1FAIpQLScX_SAMPLE_FORM_MATEMATIKA/viewform?entry.123456={nis}",
+      "start_time": "2026-10-24T08:00:00Z",
+      "end_time": "2026-10-24T12:00:00Z",
+      "duration_minutes": 90,
+      "exit_action": "lock_wait_proctor",
+      "max_strikes": 3,
+      "allowed_domains": [
+        "docs.google.com",
+        "forms.google.com",
+        "google.com",
+        "gstatic.com",
+        "googleusercontent.com"
+      ],
+      "created_by": "usr_p01"
+    },
+    {
+      "id": "exam_phys_02",
+      "institution_id": "inst_01",
+      "title": "Ujian Akhir Semester - Fisika Peminatan",
+      "subject": "Fisika",
+      "form_url_template": "https://docs.google.com/forms/d/e/1FAIpQLScX_SAMPLE_FORM_FISIKA/viewform?entry.654321={nis}",
+      "start_time": "2026-10-25T08:00:00Z",
+      "end_time": "2026-10-25T11:00:00Z",
+      "duration_minutes": 120,
+      "exit_action": "lock_wait_proctor",
+      "max_strikes": 3,
+      "allowed_domains": [
+        "docs.google.com",
+        "forms.google.com",
+        "gstatic.com"
+      ],
+      "created_by": "usr_p01"
+    }
+  ]
+}

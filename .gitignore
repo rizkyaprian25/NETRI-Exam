@@ -1,0 +1,64 @@
+# ==============================================================================
+# 1. Kredensial & File Lingkungan Sensitif (Secrets Shield)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account.json
+
+# ==============================================================================
+# 2. Direktori & Metadata AI Internal (Internal Shield)
+# ==============================================================================
+.agents/
+.gemini/
+.brain/
+.system_generated/
+AGENTS.md
+GEMINI.md
+SoftwareEngineer.md
+VIDEO_DEMO.md
+implementation_plan.md
+walkthrough.md
+
+# ==============================================================================
+# 3. Kunci Seluruh File Markdown KECUALI README.md (Clean Remote Shield)
+# ==============================================================================
+*.md
+!README.md
+!readme.md
+
+# ==============================================================================
+# 4. Direktori Build, Compiler, & Dependensi
+# ==============================================================================
+# Node / Web / Backend
+node_modules/
+dist/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+
+# Android / iOS Native Outputs
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/.symlinks/
+*.xcworkspace
+*.xcuserdatad
+
+# Sistem Operasi
+.DS_Store
+Thumbs.db
