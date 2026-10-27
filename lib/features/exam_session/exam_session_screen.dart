@@ -73,16 +73,10 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
         builder: (ctx) => LockScreenDialog(
           strikeCount: 2,
           reason: 'PERINGATAN EXAMBRO: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
-          expectedPin: widget.session.proctorPin,
-          onProctorUnlocked: () {
+          onDismissed: () {
             lockdown.unlockByProctor();
             _isLockDialogShowing = false;
             Navigator.of(ctx).pop();
-          },
-          onProctorExitToHome: () async {
-            _isLockDialogShowing = false;
-            Navigator.of(ctx).pop();
-            await _completeExamAndReturnHome();
           },
         ),
       );
@@ -241,122 +235,80 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Dialog verifikasi PIN Pengawas untuk mengakhiri atau keluar dari ujian (Standar Wajib Exambro)
+  /// Dialog peringatan saat ada upaya keluar dari ujian (Sirine 5 Detik)
   void _promptProctorExitDialog() {
-    final pinController = TextEditingController();
-    bool isError = false;
-
-    // Bunyikan alarm suara keras saat ada upaya keluar dari ujian
-    LockdownService().startAlarmSound();
+    // Bunyikan sirine peringatan 5 detik saat mencoba keluar
+    LockdownService().startAlarmSound(durationMs: 5000);
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: StatefulBuilder(
-          builder: (context, setDialogState) {
-            final examName = widget.session.mapel != null && widget.session.mapel!.isNotEmpty
-                ? widget.session.mapel!
-                : 'Ujian Ini';
-            return AlertDialog(
-              title: Row(
-                children: const [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Upaya Keluar (Sirine Aktif)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withAlpha(20),
+                borderRadius: BorderRadius.circular(NetriRadius.sm),
+                border: Border.all(color: Colors.red.withAlpha(60)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.volume_up_rounded, color: Colors.red, size: 20),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Upaya Keluar (Alarm Aktif)',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      'Sirine peringatan berbunyi selama 5 detik!',
+                      style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(20),
-                      borderRadius: BorderRadius.circular(NetriRadius.sm),
-                      border: Border.all(color: Colors.red.withAlpha(60)),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.volume_up_rounded, color: Colors.red, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Alarm berbunyi keras! Minta pengawas memasukkan PIN untuk mematikan alarm.',
-                            style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Masukkan PIN Pengawas untuk $examName:',
-                    style: const TextStyle(fontSize: 13, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: pinController,
-                    keyboardType: TextInputType.text,
-                    obscureText: true,
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      hintText: 'Masukkan PIN Pengawas',
-                      errorText: isError ? 'PIN Pengawas Salah! Alarm tetap berbunyi.' : null,
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                OutlinedButton(
-                  onPressed: () {
-                    // Hanya bisa kembali jika memasukkan PIN yang benar
-                    if (pinController.text.trim() == widget.session.proctorPin) {
-                      LockdownService().stopAlarmSound();
-                      Navigator.of(ctx).pop();
-                    } else {
-                      setDialogState(() => isError = true);
-                    }
-                  },
-                  child: const Text('Matikan & Lanjut Ujian'),
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  onPressed: () {
-                    if (pinController.text.trim() == widget.session.proctorPin) {
-                      LockdownService().stopAlarmSound();
-                      Navigator.of(ctx).pop();
-                      _completeExamAndReturnHome();
-                    } else {
-                      setDialogState(() => isError = true);
-                    }
-                  },
-                  child: const Text('Matikan & Ke Beranda'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Verifikasi PIN Pengawas khusus untuk ujian ini
-                    if (pinController.text.trim() == widget.session.proctorPin) {
-                      LockdownService().stopAlarmSound();
-                      Navigator.of(ctx).pop();
-                      _completeExam();
-                    } else {
-                      setDialogState(() => isError = true);
-                    }
-                  },
-                  child: const Text('Selesai & Bukti'),
-                ),
-              ],
-            );
-          },
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Ujian sedang berlangsung dalam mode ketat. Apakah Anda sudah selesai dan mengirimkan jawaban di Google Form?',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ],
         ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NetriColors.brandLight,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              LockdownService().stopAlarmSound();
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Lanjut Mengerjakan Ujian'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () {
+              LockdownService().stopAlarmSound();
+              Navigator.of(ctx).pop();
+              _completeExamAndReturnHome();
+            },
+            child: const Text('Sudah Selesai, Keluar Ujian'),
+          ),
+        ],
       ),
     );
   }

@@ -1,23 +1,21 @@
-// Dialog Peringatan & Layar Terkunci NETRI Exam (Apple HIG Calm Pattern)
-// Pesan objektif tidak menuduh (non-accusatory copy) & opsi buka kunci pengawas
+// Dialog Peringatan & Sirine Kecurangan NETRI Exam
+// Membunyikan sirine 5 detik saat mencoba keluar/curang & kembali tanpa PIN
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/theme/tokens.g.dart';
+import '../lockdown/lockdown_service.dart';
 
 class LockScreenDialog extends StatefulWidget {
   final int strikeCount;
   final String reason;
-  final String expectedPin;
-  final VoidCallback onProctorUnlocked;
-  final VoidCallback? onProctorExitToHome;
+  final VoidCallback onDismissed;
 
   const LockScreenDialog({
     super.key,
     required this.strikeCount,
     required this.reason,
-    this.expectedPin = '1234',
-    required this.onProctorUnlocked,
-    this.onProctorExitToHome,
+    required this.onDismissed,
   });
 
   @override
@@ -25,38 +23,42 @@ class LockScreenDialog extends StatefulWidget {
 }
 
 class _LockScreenDialogState extends State<LockScreenDialog> {
-  final TextEditingController _pinController = TextEditingController();
-  bool _isIncorrectPin = false;
+  int _secondsLeft = 5;
+  Timer? _timer;
 
-  void _verifyPinAndUnlock() {
-    // Verifikasi PIN Pengawas untuk membuka kembali lembar ujian
-    if (_pinController.text.trim() == widget.expectedPin) {
-      widget.onProctorUnlocked();
-    } else {
+  @override
+  void initState() {
+    super.initState();
+    // Hitung mundur visual sirine 5 detik
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
       setState(() {
-        _isIncorrectPin = true;
+        if (_secondsLeft > 0) {
+          _secondsLeft--;
+        } else {
+          _timer?.cancel();
+        }
       });
-    }
+    });
   }
 
-  void _verifyPinAndExit() {
-    // Verifikasi PIN Pengawas untuk mengakhiri sesi dan kembali ke beranda
-    if (_pinController.text.trim() == widget.expectedPin) {
-      widget.onProctorExitToHome?.call();
-    } else {
-      setState(() {
-        _isIncorrectPin = true;
-      });
-    }
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _dismissAndResume() {
+    LockdownService().stopAlarmSound();
+    widget.onDismissed();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isLocked = widget.strikeCount >= 1 || widget.reason.contains('PERINGATAN EXAMBRO');
 
     return PopScope(
-      canPop: false, // Dilarang menutup dialog lewat gesture back
+      canPop: false, // Dilarang menutup lewat gesture back
       child: Dialog.fullscreen(
         backgroundColor: theme.scaffoldBackgroundColor,
         child: SafeArea(
@@ -65,117 +67,96 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Ikon Status
+                // Ikon Sirine Berkedip Merah
                 Container(
                   padding: const EdgeInsets.all(NetriSpacing.space5),
                   decoration: BoxDecoration(
-                    color: isLocked
-                        ? NetriColors.stateDangerLight.withAlpha(25)
-                        : NetriColors.stateWarningLight.withAlpha(25),
+                    color: Colors.red.withAlpha(25),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    isLocked ? Icons.notifications_active_rounded : Icons.info_outline_rounded,
-                    color: isLocked
-                        ? NetriColors.stateDangerLight
-                        : NetriColors.stateWarningLight,
-                    size: 56,
+                  child: const Icon(
+                    Icons.notifications_active_rounded,
+                    color: Colors.red,
+                    size: 64,
                   ),
                 ),
                 const SizedBox(height: NetriSpacing.space4),
 
-                // Judul
-                Text(
-                  isLocked ? '🚨 Sesi Ujian Terkunci (Alarm Aktif)' : 'Pemberitahuan Sistem Ujian',
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                // Judul Peringatan Keras
+                const Text(
+                  '🚨 PERINGATAN KECURANGAN!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: NetriSpacing.space3),
 
-                // Banner Alarm Suara
-                if (isLocked) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(25),
-                      borderRadius: BorderRadius.circular(NetriRadius.md),
-                      border: Border.all(color: Colors.red.withAlpha(80)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.volume_up_rounded, color: Colors.red, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'ALARM PERINGATAN BERBUNYI',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
+                // Indikator Sirine 5 Detik
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withAlpha(20),
+                    borderRadius: BorderRadius.circular(NetriRadius.full),
+                    border: Border.all(color: Colors.red.withAlpha(80)),
                   ),
-                  const SizedBox(height: NetriSpacing.space3),
-                ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.volume_up_rounded, color: Colors.red, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        _secondsLeft > 0
+                            ? 'Sirine Peringatan Berbunyi ($_secondsLeft detik)'
+                            : 'Sirine Telah Berakhir',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: NetriSpacing.space4),
 
-                // Pesan Non-Menuduh
+                // Alasan Pelanggaran
                 Text(
                   widget.reason,
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodyMedium?.color),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: NetriSpacing.space2),
                 Text(
-                  isLocked
-                      ? 'Alarm berbunyi keras. Minta pengawas ruang memasukkan PIN Pengawas untuk mematikan alarm dan membuka kunci.'
-                      : 'Catatan: Ujian direkam demi menjaga integritas bersama. Mohon tetap berada di aplikasi.',
-                  style: theme.textTheme.bodyMedium,
+                  'Anda dilarang keras meminimalkan aplikasi, menekan tombol navigasi, atau membuka aplikasi lain selama ujian berlangsung.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
                   textAlign: TextAlign.center,
                 ),
 
-                const SizedBox(height: NetriSpacing.space5),
+                const SizedBox(height: NetriSpacing.space6),
 
-                // Jika terkunci: input PIN pengawas
-                if (isLocked) ...[
-                  SizedBox(
-                    width: 260,
-                    child: TextField(
-                      controller: _pinController,
-                      keyboardType: TextInputType.text,
-                      obscureText: true,
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        hintText: 'PIN Pengawas',
-                        errorText: _isIncorrectPin ? 'PIN Pengawas Salah! Alarm tetap aktif.' : null,
+                // Tombol Kembali Mengerjakan Soal (Tanpa PIN)
+                SizedBox(
+                  width: 280,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: NetriColors.brandLight,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(NetriRadius.md),
                       ),
-                      onSubmitted: (_) => _verifyPinAndUnlock(),
+                    ),
+                    onPressed: _dismissAndResume,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text(
+                      'Saya Mengerti, Kembali ke Ujian',
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
-                  const SizedBox(height: NetriSpacing.space4),
-                  ElevatedButton(
-                    onPressed: _verifyPinAndUnlock,
-                    child: const Text('Matikan Alarm & Lanjut Ujian'),
-                  ),
-                  if (widget.onProctorExitToHome != null) ...[
-                    const SizedBox(height: NetriSpacing.space2),
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: NetriColors.stateDangerLight,
-                      ),
-                      onPressed: _verifyPinAndExit,
-                      icon: const Icon(Icons.exit_to_app_rounded, size: 18),
-                      label: const Text('Matikan Alarm & Ke Beranda'),
-                    ),
-                  ],
-                ] else ...[
-                  // Jika hanya peringatan (Strike 1)
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Saya Mengerti & Lanjutkan Ujian'),
-                  ),
-                ],
+                ),
               ],
             ),
           ),

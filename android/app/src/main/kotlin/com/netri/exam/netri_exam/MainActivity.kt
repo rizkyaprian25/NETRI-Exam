@@ -55,7 +55,8 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "startAlarmSound" -> {
-                    startAlarmSound()
+                    val durationMs = (call.argument<Int>("durationMs") ?: 5000).toLong()
+                    startAlarmSound(durationMs)
                     result.success(true)
                 }
                 "stopAlarmSound" -> {
@@ -184,7 +185,9 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun startAlarmSound() {
+    private var alarmTimerRunnable: Runnable? = null
+
+    private fun startAlarmSound(durationMs: Long = 5000L) {
         runOnUiThread {
             try {
                 enforceMaxVolume()
@@ -209,6 +212,14 @@ class MainActivity : FlutterActivity() {
                 } else if (!alarmMediaPlayer!!.isPlaying) {
                     alarmMediaPlayer!!.start()
                 }
+
+                // Hentikan otomatis setelah durasi tertentu (bawaan: 5 detik)
+                alarmTimerRunnable?.let { mainHandler.removeCallbacks(it) }
+                alarmTimerRunnable = Runnable {
+                    stopAlarmSound()
+                }
+                mainHandler.postDelayed(alarmTimerRunnable!!, durationMs)
+
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -218,6 +229,10 @@ class MainActivity : FlutterActivity() {
     private fun stopAlarmSound() {
         runOnUiThread {
             try {
+                alarmTimerRunnable?.let {
+                    mainHandler.removeCallbacks(it)
+                    alarmTimerRunnable = null
+                }
                 alarmMediaPlayer?.let {
                     if (it.isPlaying) {
                         it.stop()

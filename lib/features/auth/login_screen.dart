@@ -1,13 +1,11 @@
-// Layar Beranda Exambro (Tab 1: Siswa / Ujian, Tab 2: Admin & Custom PIN GForm)
-// Menangani URL form default kosong, manajemen Mapel/Kelas/PIN di tab Admin,
-// dan pencocokan otomatis PIN pengawas ketika link GForm diisi oleh siswa.
+// Layar Beranda NETRI Exam (Mode Bersih, Cepat & Ketat)
+// Input URL Manual, Scan QR Code Kamera, dan Mulai Ujian Tanpa PIN
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../contracts/models.dart';
-import '../../core/storage/admin_config_store.dart';
 import '../../core/theme/tokens.g.dart';
 import '../exam_session/exam_session_screen.dart';
+import '../qr_scanner/qr_scanner_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,158 +14,70 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-
-  // Controller Tab 1: Siswa (Default kosong agar tidak perlu menghapus)
+class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _urlController = TextEditingController();
-
-  // Status autentikasi PIN Guru / Admin
-  static const String _masterAdminPin = '20268237';
-  bool _isAdminAuthenticated = false;
-  final TextEditingController _adminPinInputController = TextEditingController();
-  String? _adminPinErrorMessage;
-
-  // Daftar konfigurasi ujian tersimpan dari Admin
-  List<AdminExamConfig> _adminConfigs = [];
-  AdminExamConfig? _detectedConfig;
-
   String? _errorMessage;
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadAdminConfigs();
-
-    // Deteksi otomatis apakah URL yang diketik/ditempel siswa cocok dengan data Admin
-    _urlController.addListener(_checkUrlMatch);
-  }
-
-  @override
   void dispose() {
-    _urlController.removeListener(_checkUrlMatch);
-    _tabController.dispose();
     _urlController.dispose();
-    _adminPinInputController.dispose();
     super.dispose();
   }
 
-  void _verifyAdminPin() {
-    final input = _adminPinInputController.text.trim();
-    if (input == _masterAdminPin) {
-      setState(() {
-        _isAdminAuthenticated = true;
-        _adminPinErrorMessage = null;
-        _adminPinInputController.clear();
-      });
-    } else {
-      setState(() {
-        _adminPinErrorMessage = 'PIN Guru salah! Silakan coba lagi.';
-      });
-    }
-  }
-
-  void _lockAdmin() {
-    setState(() {
-      _isAdminAuthenticated = false;
-      _adminPinErrorMessage = null;
-      _adminPinInputController.clear();
-    });
-  }
-
-  Future<void> _loadAdminConfigs() async {
-    final configs = await AdminConfigStore().getAllConfigs();
-    if (mounted) {
-      setState(() {
-        _adminConfigs = configs;
-      });
-      _checkUrlMatch();
-    }
-  }
-
-  Future<void> _checkUrlMatch() async {
-    final text = _urlController.text.trim();
-    if (text.isEmpty) {
-      if (_detectedConfig != null) {
-        setState(() => _detectedConfig = null);
-      }
-      return;
-    }
-
-    final matched = await AdminConfigStore().findConfigByUrl(text);
-    if (mounted && _detectedConfig?.id != matched?.id) {
-      setState(() {
-        _detectedConfig = matched;
-      });
-    }
-  }
-
-  /// Memulai ujian langsung dari Entitas Ujian Admin terpilih
-  /// Menjamin PIN Pengawas, durasi, mapel, dan link 100% terisolasi per entitas
-  void _startExamFromEntity(AdminExamConfig config) {
+  /// Buka Pemindai QR Code untuk mengisi tautan ujian secara otomatis
+  Future<void> _scanQrCode() async {
     setState(() => _errorMessage = null);
+    try {
+      final scannedUrl = await Navigator.of(context).push<String>(
+        MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+      );
 
-    _showLockdownPreparationDialog(
-      config: config,
-      onConfirmed: () {
-        final now = DateTime.now();
-        final durationMinutes = config.durasiMenit > 0 ? config.durasiMenit : 90;
-        final session = ActiveExamSession(
-          sessionId: 'ses_${now.millisecondsSinceEpoch}',
-          formUrl: config.linkGForm,
-          deadlineAt: now.add(Duration(minutes: durationMinutes)),
-          durationMinutes: durationMinutes,
-          serverCurrentTime: now,
-          allowedDomains: const [
-            'docs.google.com',
-            'forms.google.com',
-            'google.com',
-            'gstatic.com',
-            'googleusercontent.com',
-            'forms.gle',
-          ],
-          proctorPin: config.pinPengawas.trim(),
-          mapel: '${config.tipeUjian != null && config.tipeUjian!.isNotEmpty ? "[${config.tipeUjian}] " : ""}${config.mapel}',
-          kelas: config.kelas,
-        );
+      if (scannedUrl != null && scannedUrl.trim().isNotEmpty) {
+        setState(() {
+          _urlController.text = scannedUrl.trim();
+        });
 
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ExamSessionScreen(session: session),
-          ),
-        );
-      },
-    );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('Tautan QR Code berhasil dipindai!'),
+                ],
+              ),
+              backgroundColor: NetriColors.stateSuccessLight,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Gagal membuka kamera: $e');
+    }
   }
 
-  /// Memulai ujian dari input manual atau link yang dicocokkan
-  void _startStudentExam() {
+  /// Memulai sesi ujian dalam mode ketat
+  void _startExam() {
     final rawUrl = _urlController.text.trim();
     if (rawUrl.isEmpty) {
-      setState(() => _errorMessage = 'Harap masukkan atau tempel link Google Form ujian.');
+      setState(() => _errorMessage = 'Harap tempel tautan form atau pindai QR Code ujian.');
       return;
     }
 
     final uri = Uri.tryParse(rawUrl);
     if (uri == null || (!rawUrl.contains('google.com') && !rawUrl.contains('forms.gle'))) {
-      setState(() => _errorMessage = 'URL harus berupa tautan Google Forms yang sah.');
+      setState(() => _errorMessage = 'Tautan harus berupa formulir Google Forms yang sah.');
       return;
     }
 
     setState(() => _errorMessage = null);
 
-    // Jika link cocok dengan entitas tersimpan, langsung mulai dengan konfigurasi entitas tersebut
-    if (_detectedConfig != null) {
-      _startExamFromEntity(_detectedConfig!);
-      return;
-    }
-
-    // Fallback jika memasukkan link form baru di luar daftar admin
-    _showLockdownPreparationDialog(
+    _showConfirmationBottomSheet(
       onConfirmed: () {
         final now = DateTime.now();
-        const durationMinutes = 90;
+        const durationMinutes = 120; // 2 Jam standar
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
           formUrl: rawUrl,
@@ -182,8 +92,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'googleusercontent.com',
             'forms.gle',
           ],
-          proctorPin: '1234',
-          mapel: 'Ujian Mandiri',
+          proctorPin: '', // Tanpa PIN
+          mapel: 'Ujian Google Form',
           kelas: 'Umum',
         );
 
@@ -196,20 +106,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  /// Dialog persiapan penguncian (Platform Specific: Android Immersive & iOS Guided Access)
-  void _showLockdownPreparationDialog({
-    AdminExamConfig? config,
-    required VoidCallback onConfirmed,
-  }) {
-    final isIos = defaultTargetPlatform == TargetPlatform.iOS;
-    final targetConfig = config ?? _detectedConfig;
-    final title = targetConfig != null
-        ? '${targetConfig.tipeUjian != null && targetConfig.tipeUjian!.isNotEmpty ? "[${targetConfig.tipeUjian}] " : ""}${targetConfig.mapel}'
-        : 'Konfirmasi Ujian Exambro';
-    final subtitle = targetConfig != null
-        ? 'Kelas: ${targetConfig.kelas} • Durasi: ${targetConfig.durasiMenit} Menit'
-        : 'Durasi: 90 Menit • Mode Layar Penuh Aman';
-
+  /// Konfirmasi sebelum mengunci layar penuh, kecerahan 100%, dan suara 100%
+  void _showConfirmationBottomSheet({required VoidCallback onConfirmed}) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -230,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       color: NetriColors.brandLight.withAlpha(25),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.shield_rounded, color: NetriColors.brandLight, size: 28),
+                    child: const Icon(Icons.security_rounded, color: NetriColors.brandLight, size: 28),
                   ),
                   const SizedBox(width: NetriSpacing.space3),
                   Expanded(
@@ -238,12 +136,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          title,
+                          'Mode Ujian Ketat (Anti-Curang)',
                           style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(fontSize: 13, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
+                        const Text(
+                          'Cahaya 100% • Suara 100% • Sirine Peringatan Aktif',
+                          style: TextStyle(fontSize: 12, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -252,215 +150,38 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               const SizedBox(height: NetriSpacing.space4),
 
-              if (isIos) ...[
-                const Text(
-                  'Petunjuk Siswa (iOS / iPadOS):',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '1. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
-                  '2. Untuk mengunci tombol keluar, aktifkan Guided Access dengan menekan tombol power 3 kali.\n'
-                  '3. Berpindah aplikasi atau keluar dari ujian akan mewajibkan verifikasi PIN Pengawas.',
-                  style: TextStyle(fontSize: 13, height: 1.4),
-                ),
-              ] else ...[
-                const Text(
-                  'Petunjuk Siswa (Android):',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '1. Kecerahan layar & volume suara otomatis disetel penuh (100%) dan dikunci selama ujian.\n'
-                  '2. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
-                  '3. Mencoba keluar atau berpindah aplikasi akan membunyikan alarm keras dan harus dibuka dengan PIN Pengawas.',
-                  style: TextStyle(fontSize: 13, height: 1.4),
-                ),
-              ],
+              const Text(
+                'Peraturan Selama Ujian Berlangsung:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '• Kecerahan layar & volume suara disetel penuh (100%) dan tidak bisa dikecilkan.\n'
+                '• Dilarang berpindah aplikasi, meminimalkan layar, atau menekan tombol navigasi.\n'
+                '• Upaya keluar atau berpindah aplikasi akan membunyikan sirine peringatan keras selama 5 detik!',
+                style: TextStyle(fontSize: 12, height: 1.4),
+              ),
 
               const SizedBox(height: NetriSpacing.space6),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: NetriColors.brandLight,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                   icon: const Icon(Icons.play_arrow_rounded, size: 22),
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     onConfirmed();
                   },
-                  label: const Text('Mulai Mengerjakan Sekarang'),
+                  label: const Text('Saya Siap & Mulai Mengerjakan', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// Dialog Tambah Form Ujian Baru oleh Admin
-  void _showAddExamDialog({AdminExamConfig? editConfig}) {
-    String selectedTipe = editConfig?.tipeUjian ?? 'UAS';
-    final mapelController = TextEditingController(text: editConfig?.mapel ?? '');
-    final kelasController = TextEditingController(text: editConfig?.kelas ?? '');
-    final pinController = TextEditingController(text: editConfig?.pinPengawas ?? '');
-    final linkController = TextEditingController(text: editConfig?.linkGForm ?? '');
-    final durasiController = TextEditingController(
-      text: editConfig != null ? editConfig.durasiMenit.toString() : '90',
-    );
-    String? dialogError;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(editConfig == null ? '+ Tambah Form Ujian' : 'Edit Form Ujian'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (dialogError != null) ...[
-                    Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-                    const SizedBox(height: 8),
-                  ],
-
-                  // Pilihan Tipe Ujian (UAS / UTS / dsb)
-                  const Text(
-                    'Tipe Ujian (UAS / UTS):',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: ['UAS', 'UTS', 'Ulangan Harian', 'Ujian Sekolah', 'Latihan'].map((tipe) {
-                      final isSel = selectedTipe == tipe;
-                      return ChoiceChip(
-                        label: Text(
-                          tipe,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isSel ? Colors.white : null,
-                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                        selected: isSel,
-                        selectedColor: NetriColors.brandLight,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: (val) {
-                          if (val) {
-                            setDialogState(() => selectedTipe = tipe);
-                          }
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextField(
-                    controller: mapelController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nama Mata Pelajaran (Mapel)',
-                      hintText: 'Contoh: Matematika Wajib',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: kelasController,
-                    decoration: const InputDecoration(
-                      labelText: 'Kelas / Tingkat',
-                      hintText: 'Contoh: X IPA 1 / XII RPL',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: pinController,
-                    keyboardType: TextInputType.text,
-                    decoration: const InputDecoration(
-                      labelText: 'PIN Pengawas (Izin Keluar / Melanggar)',
-                      hintText: 'Contoh: 1234 atau 7890',
-                      helperText: 'PIN khusus ujian ini, hanya diminta saat siswa keluar/melanggar',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: durasiController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Durasi Ujian (Menit)',
-                      hintText: 'Contoh: 60, 90, 120',
-                      suffixText: 'Menit',
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    children: [30, 45, 60, 90, 120].map((mins) {
-                      return ActionChip(
-                        label: Text('$mins mnt', style: const TextStyle(fontSize: 11)),
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () {
-                          setDialogState(() {
-                            durasiController.text = mins.toString();
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: linkController,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'Link Google Form Ujian',
-                      hintText: 'https://forms.gle/...',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Batal'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final mapel = mapelController.text.trim();
-                  final kelas = kelasController.text.trim();
-                  final pin = pinController.text.trim();
-                  final link = linkController.text.trim();
-                  final durasiText = durasiController.text.trim();
-                  final durasi = int.tryParse(durasiText) ?? 90;
-
-                  if (mapel.isEmpty || kelas.isEmpty || pin.isEmpty || link.isEmpty) {
-                    setDialogState(() => dialogError = 'Semua kolom wajib diisi!');
-                    return;
-                  }
-
-                  final newConfig = AdminExamConfig(
-                    id: editConfig?.id ?? 'exam_${DateTime.now().millisecondsSinceEpoch}',
-                    mapel: mapel,
-                    kelas: kelas,
-                    pinPengawas: pin,
-                    linkGForm: link,
-                    durasiMenit: durasi > 0 ? durasi : 90,
-                    tipeUjian: selectedTipe,
-                  );
-
-                  await AdminConfigStore().saveConfig(newConfig);
-                  await _loadAdminConfigs();
-
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -475,12 +196,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(NetriSpacing.space6),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
+              constraints: const BoxConstraints(maxWidth: 460),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo & Brand Header Resmi NETRI Exam
+                  // Logo Resmi NETRI Exam
                   Center(
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 140, maxWidth: 220),
@@ -495,29 +216,29 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ),
                   ),
                   const SizedBox(height: NetriSpacing.space3),
+
+                  // Badge Status
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
-                          color: NetriColors.stateSuccessLight.withAlpha(20),
+                          color: NetriColors.brandLight.withAlpha(20),
                           borderRadius: BorderRadius.circular(NetriRadius.full),
-                          border: Border.all(
-                            color: NetriColors.stateSuccessLight.withAlpha(60),
-                          ),
+                          border: Border.all(color: NetriColors.brandLight.withAlpha(60)),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.verified_rounded, size: 13, color: NetriColors.stateSuccessLight),
-                            SizedBox(width: 5),
+                          children: [
+                            Icon(Icons.shield_rounded, size: 14, color: NetriColors.brandLight),
+                            SizedBox(width: 6),
                             Text(
-                              'Exambro Android & iOS Mode',
+                              'Aplikasi Ujian Aman (Anti-Curang)',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: NetriColors.stateSuccessLight,
+                                color: NetriColors.brandLight,
                               ),
                             ),
                           ],
@@ -525,28 +246,90 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                     ],
                   ),
-                  const SizedBox(height: NetriSpacing.space5),
+                  const SizedBox(height: NetriSpacing.space6),
 
-                  // Tab Pilihan: Ujian (Siswa) vs Admin (Guru)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withAlpha(25),
-                      borderRadius: BorderRadius.circular(NetriRadius.md),
+                  // Kartu Masuk Ujian
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(NetriRadius.lg),
+                      side: BorderSide(color: theme.dividerColor.withAlpha(50), width: 1.2),
                     ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      dividerColor: Colors.transparent,
-                      tabs: const [
-                        Tab(text: 'Ujian (Siswa)'),
-                        Tab(text: 'Admin (Guru)'),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(NetriSpacing.space5),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Tautan Formulir Ujian',
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Pindai QR Code dari pengawas atau tempel tautan Google Form di bawah ini:',
+                            style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+                          ),
+                          const SizedBox(height: NetriSpacing.space3),
+
+                          // Input URL
+                          TextField(
+                            controller: _urlController,
+                            keyboardType: TextInputType.url,
+                            decoration: InputDecoration(
+                              hintText: 'https://forms.gle/... atau docs.google.com...',
+                              prefixIcon: const Icon(Icons.link_rounded),
+                              suffixIcon: _urlController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () => setState(() => _urlController.clear()),
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: NetriSpacing.space3),
+
+                          // Tombol Scan QR Code
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: const BorderSide(color: NetriColors.brandLight),
+                            ),
+                            onPressed: _scanQrCode,
+                            icon: const Icon(Icons.qr_code_scanner_rounded, color: NetriColors.brandLight),
+                            label: const Text(
+                              'Scan QR Code Soal',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: NetriColors.brandLight),
+                            ),
+                          ),
+
+                          const SizedBox(height: NetriSpacing.space4),
+
+                          // Tombol Mulai Ujian
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: NetriColors.brandLight,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(NetriRadius.md),
+                              ),
+                            ),
+                            onPressed: _startExam,
+                            icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                            label: const Text(
+                              'Mulai Ujian',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: NetriSpacing.space4),
 
                   // Pesan Kesalahan jika ada
                   if (_errorMessage != null) ...[
+                    const SizedBox(height: NetriSpacing.space4),
                     Container(
                       padding: const EdgeInsets.all(NetriSpacing.space3),
                       decoration: BoxDecoration(
@@ -567,532 +350,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ],
                       ),
                     ),
-                    const SizedBox(height: NetriSpacing.space4),
                   ],
-
-                  // Konten Tab
-                  AnimatedBuilder(
-                    animation: _tabController,
-                    builder: (context, _) {
-                      return _tabController.index == 0
-                          ? _buildStudentExamTab(theme)
-                          : _buildAdminTab(theme);
-                    },
-                  ),
                 ],
               ),
             ),
           ),
         ),
       ),
-    );
-  }
-
-  /// TAB 1: SISWA (Entitas Ujian Mandiri & Opsi Link Manual)
-  Widget _buildStudentExamTab(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 1. DAFTAR ENTITAS UJIAN AKTIF (Tiap Ujian Berdiri Sendiri dengan PIN Terpisah)
-        if (_adminConfigs.isNotEmpty) ...[
-          Row(
-            children: [
-              const Icon(Icons.school_rounded, size: 20, color: NetriColors.brandLight),
-              const SizedBox(width: 8),
-              Text(
-                'Daftar Ujian Aktif (${_adminConfigs.length})',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Pilih ujian untuk langsung mulai mengerjakan tanpa memasukkan PIN:',
-            style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
-          ),
-          const SizedBox(height: NetriSpacing.space3),
-
-          // Render tiap entitas ujian sebagai kartu mandiri
-          ..._adminConfigs.map((cfg) => _buildExamEntityCard(cfg, theme)),
-
-          const SizedBox(height: NetriSpacing.space3),
-          const Divider(),
-          const SizedBox(height: NetriSpacing.space2),
-        ],
-
-        // 2. SEKSI INPUT TAUTAN MANUAL (Jika guru memberikan link langsung)
-        Text(
-          _adminConfigs.isNotEmpty
-              ? 'Atau Masukkan Tautan Manual:'
-              : 'Tautan Google Form Ujian',
-          style: theme.textTheme.labelLarge,
-        ),
-        const SizedBox(height: NetriSpacing.space1),
-        TextField(
-          controller: _urlController,
-          keyboardType: TextInputType.url,
-          decoration: InputDecoration(
-            hintText: 'Tempel link form ujian di sini...',
-            prefixIcon: const Icon(Icons.link_rounded),
-            suffixIcon: _urlController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 18),
-                    onPressed: () {
-                      _urlController.clear();
-                      setState(() => _detectedConfig = null);
-                    },
-                  )
-                : null,
-          ),
-        ),
-        const SizedBox(height: NetriSpacing.space2),
-
-        // Indikator Deteksi Otomatis Jika Link Cocok dengan Entitas Admin
-        if (_detectedConfig != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: NetriColors.stateSuccessLight.withAlpha(20),
-              borderRadius: BorderRadius.circular(NetriRadius.sm),
-              border: Border.all(color: NetriColors.stateSuccessLight.withAlpha(60)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded, color: NetriColors.stateSuccessLight, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Terhubung ke: ${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: NetriColors.stateSuccessLight,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: NetriSpacing.space3),
-        ],
-
-        ElevatedButton.icon(
-          onPressed: _startStudentExam,
-          icon: const Icon(Icons.play_arrow_rounded, size: 22),
-          label: const Text('Mulai Ujian'),
-        ),
-        const SizedBox(height: NetriSpacing.space1),
-        Text(
-          'Tidak memerlukan PIN untuk masuk. PIN Pengawas hanya diperlukan saat keluar ujian.',
-          style: theme.textTheme.labelSmall,
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  /// Kartu Entitas Ujian Mandiri (Menjamin isolasi total Mapel, Kelas, Durasi, dan PIN Pengawas)
-  Widget _buildExamEntityCard(AdminExamConfig cfg, ThemeData theme) {
-    final prefix = cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty ? cfg.tipeUjian! : 'UJIAN';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: NetriSpacing.space3),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(NetriRadius.md),
-        side: BorderSide(color: NetriColors.brandLight.withAlpha(60), width: 1.2),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(NetriSpacing.space4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Baris Atas: Badge Tipe Ujian, Badge Kelas, Durasi
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: NetriColors.brandLight.withAlpha(25),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    prefix,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: NetriColors.brandLight,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withAlpha(25),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    'Kelas: ${cfg.kelas}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.timer_outlined, size: 14, color: NetriColors.brandLight),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${cfg.durasiMenit} Menit',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: NetriSpacing.space2),
-
-            // Nama Mata Pelajaran
-            Text(
-              cfg.mapel,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-
-            // Catatan Keamanan Proteksi PIN
-            Row(
-              children: [
-                const Icon(Icons.verified_user_outlined, size: 13, color: NetriColors.stateSuccessLight),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Entitas mandiri • Proteksi PIN Pengawas aktif saat keluar/izin',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: NetriSpacing.space3),
-
-            // Tombol Mulai Ujian untuk Entitas Ini Secara Langsung
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: NetriColors.brandLight,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(NetriRadius.sm),
-                  ),
-                ),
-                icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                label: Text(
-                  'Mulai Ujian ${cfg.mapel}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                onPressed: () => _startExamFromEntity(cfg),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// TAB 2: ADMIN / GURU (Dilindungi Gerbang PIN Master)
-  Widget _buildAdminTab(ThemeData theme) {
-    if (!_isAdminAuthenticated) {
-      return _buildAdminPinGate(theme);
-    }
-    return _buildAdminDashboard(theme);
-  }
-
-  /// Gerbang Login Khusus Guru / Admin Menggunakan PIN
-  Widget _buildAdminPinGate(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(NetriSpacing.space5),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(NetriRadius.lg),
-        border: Border.all(color: theme.dividerColor.withAlpha(40)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(NetriSpacing.space3),
-              decoration: BoxDecoration(
-                color: NetriColors.brandLight.withAlpha(25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.admin_panel_settings_rounded,
-                color: NetriColors.brandLight,
-                size: 38,
-              ),
-            ),
-          ),
-          const SizedBox(height: NetriSpacing.space3),
-          Text(
-            'Panel Khusus Guru',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Masukkan PIN Admin untuk mengelola formulir ujian, kelas, dan PIN pengawas.',
-            style: theme.textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: NetriSpacing.space4),
-          TextField(
-            controller: _adminPinInputController,
-            keyboardType: TextInputType.number,
-            obscureText: true,
-            textAlign: TextAlign.center,
-            maxLength: 8,
-            style: const TextStyle(fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              hintText: '• • • • • • • •',
-              hintStyle: const TextStyle(letterSpacing: 4),
-              counterText: '',
-              prefixIcon: const Icon(Icons.password_rounded, size: 20),
-              errorText: _adminPinErrorMessage,
-            ),
-            onSubmitted: (_) => _verifyAdminPin(),
-          ),
-          const SizedBox(height: NetriSpacing.space4),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _verifyAdminPin,
-              icon: const Icon(Icons.login_rounded, size: 18),
-              label: const Text(
-                'Buka Panel Guru',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Dashboard Pengelolaan Formulir Ujian oleh Guru
-  Widget _buildAdminDashboard(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Panel Guru',
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: NetriColors.stateSuccessLight.withAlpha(25),
-                          borderRadius: BorderRadius.circular(NetriRadius.sm),
-                        ),
-                        child: const Text(
-                          'Terbuka',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: NetriColors.stateSuccessLight,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Kelola Mapel UAS/UTS, Kelas, Waktu & PIN',
-                    style: theme.textTheme.labelSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              tooltip: 'Kunci Kembali Panel',
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(6),
-              constraints: const BoxConstraints(),
-              icon: const Icon(Icons.lock_outline_rounded, size: 20, color: Colors.grey),
-              onPressed: _lockAdmin,
-            ),
-            const SizedBox(width: 6),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                minimumSize: const Size(0, 34),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onPressed: () => _showAddExamDialog(),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('+ GForm', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-        const SizedBox(height: NetriSpacing.space3),
-
-        if (_adminConfigs.isEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(NetriSpacing.space5),
-            decoration: BoxDecoration(
-              color: Colors.grey.withAlpha(15),
-              borderRadius: BorderRadius.circular(NetriRadius.md),
-              border: Border.all(color: Colors.grey.withAlpha(30)),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.assignment_outlined, size: 40, color: Colors.grey.shade400),
-                const SizedBox(height: 8),
-                const Text(
-                  'Belum Ada Form Ujian',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Klik tombol "+ GForm" di atas untuk menambahkan Mapel UAS/UTS, Kelas, Durasi, PIN Pengawas, dan Link Form.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ] else ...[
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _adminConfigs.length,
-            itemBuilder: (context, index) {
-              final cfg = _adminConfigs[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: NetriSpacing.space2),
-                child: Padding(
-                  padding: const EdgeInsets.all(NetriSpacing.space3),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: NetriColors.brandLight.withAlpha(20),
-                          borderRadius: BorderRadius.circular(NetriRadius.sm),
-                        ),
-                        child: const Icon(Icons.assignment_rounded, color: NetriColors.brandLight, size: 22),
-                      ),
-                      const SizedBox(width: NetriSpacing.space3),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                if (cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: NetriColors.brandLight.withAlpha(25),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      cfg.tipeUjian!,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: NetriColors.brandLight,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                ],
-                                Expanded(
-                                  child: Text(
-                                    cfg.mapel,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Kelas: ${cfg.kelas} • ⏱️ ${cfg.durasiMenit} Mnt • PIN: ${cfg.pinPengawas}',
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                            Text(
-                              cfg.linkGForm,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11, color: NetriColors.brandLight),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Buka & Kerjakan Ujian Ini',
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.play_circle_outline_rounded, size: 22, color: NetriColors.stateSuccessLight),
-                        onPressed: () {
-                          _tabController.animateTo(0);
-                          _startExamFromEntity(cfg);
-                        },
-                      ),
-                      IconButton(
-                        tooltip: 'Edit Ujian',
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.edit_outlined, size: 18, color: NetriColors.brandLight),
-                        onPressed: () => _showAddExamDialog(editConfig: cfg),
-                      ),
-                      IconButton(
-                        tooltip: 'Hapus',
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                        onPressed: () async {
-                          await AdminConfigStore().deleteConfig(cfg.id);
-                          await _loadAdminConfigs();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ],
     );
   }
 }

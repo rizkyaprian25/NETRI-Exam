@@ -44,10 +44,10 @@ class LockdownService {
     }
   }
 
-  /// Membunyikan suara alarm peringatan keras (looping)
-  Future<void> startAlarmSound() async {
+  /// Membunyikan suara alarm sirine peringatan keras (bawaan 5 detik)
+  Future<void> startAlarmSound({int durationMs = 5000}) async {
     try {
-      await _channel.invokeMethod('startAlarmSound');
+      await _channel.invokeMethod('startAlarmSound', {'durationMs': durationMs});
     } catch (_) {}
   }
 

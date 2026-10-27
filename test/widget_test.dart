@@ -16,7 +16,8 @@ void main() {
 
       // Memastikan logo dan elemen input Exambro muncul tanpa exception
       expect(find.byType(Image), findsOneWidget);
-      expect(find.text('Exambro Android & iOS Mode'), findsOneWidget);
+      expect(find.text('Aplikasi Ujian Aman (Anti-Curang)'), findsOneWidget);
+      expect(find.text('Scan QR Code Soal'), findsOneWidget);
       expect(find.text('Mulai Ujian'), findsOneWidget);
     });
 
