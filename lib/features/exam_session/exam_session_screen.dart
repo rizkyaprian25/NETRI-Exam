@@ -251,25 +251,28 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final examName = widget.session.mapel != null && widget.session.mapel!.isNotEmpty
+              ? widget.session.mapel!
+              : 'Ujian Ini';
           return AlertDialog(
             title: const Text('Keluar Ujian (Otorisasi Pengawas)'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Siswa dilarang menutup aplikasi sendiri. Minta pengawas memasukkan PIN untuk mengakhiri sesi:',
+                Text(
+                  'Siswa dilarang menutup ujian sendiri. Minta pengawas memasukkan PIN Pengawas untuk $examName:',
+                  style: const TextStyle(fontSize: 13, height: 1.4),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: pinController,
-                  keyboardType: TextInputType.number,
+                  keyboardType: TextInputType.text,
                   obscureText: true,
-                  maxLength: 4,
                   textAlign: TextAlign.center,
                   decoration: InputDecoration(
-                    hintText: 'PIN Pengawas',
-                    counterText: '',
-                    errorText: isError ? 'PIN Pengawas Salah' : null,
+                    hintText: 'Masukkan PIN Pengawas',
+                    errorText: isError ? 'PIN Pengawas Salah!' : null,
                   ),
                 ),
               ],
@@ -277,7 +280,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Kembali ke Soal'),
+                child: const Text('Kembali Mengerjakan'),
               ),
               OutlinedButton(
                 onPressed: () {

@@ -103,7 +103,45 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  /// Memulai ujian terkunci oleh siswa
+  /// Memulai ujian langsung dari Entitas Ujian Admin terpilih
+  /// Menjamin PIN Pengawas, durasi, mapel, dan link 100% terisolasi per entitas
+  void _startExamFromEntity(AdminExamConfig config) {
+    setState(() => _errorMessage = null);
+
+    _showLockdownPreparationDialog(
+      config: config,
+      onConfirmed: () {
+        final now = DateTime.now();
+        final durationMinutes = config.durasiMenit > 0 ? config.durasiMenit : 90;
+        final session = ActiveExamSession(
+          sessionId: 'ses_${now.millisecondsSinceEpoch}',
+          formUrl: config.linkGForm,
+          deadlineAt: now.add(Duration(minutes: durationMinutes)),
+          durationMinutes: durationMinutes,
+          serverCurrentTime: now,
+          allowedDomains: const [
+            'docs.google.com',
+            'forms.google.com',
+            'google.com',
+            'gstatic.com',
+            'googleusercontent.com',
+            'forms.gle',
+          ],
+          proctorPin: config.pinPengawas.trim(),
+          mapel: '${config.tipeUjian != null && config.tipeUjian!.isNotEmpty ? "[${config.tipeUjian}] " : ""}${config.mapel}',
+          kelas: config.kelas,
+        );
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ExamSessionScreen(session: session),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Memulai ujian dari input manual atau link yang dicocokkan
   void _startStudentExam() {
     final rawUrl = _urlController.text.trim();
     if (rawUrl.isEmpty) {
@@ -119,19 +157,21 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     setState(() => _errorMessage = null);
 
-    // Ambil PIN Pengawas khusus jika link cocok dengan konfigurasi Admin, atau fallback '1234'
-    final proctorPin = _detectedConfig?.pinPengawas.trim().isNotEmpty == true
-        ? _detectedConfig!.pinPengawas.trim()
-        : '1234';
+    // Jika link cocok dengan entitas tersimpan, langsung mulai dengan konfigurasi entitas tersebut
+    if (_detectedConfig != null) {
+      _startExamFromEntity(_detectedConfig!);
+      return;
+    }
 
+    // Fallback jika memasukkan link form baru di luar daftar admin
     _showLockdownPreparationDialog(
       onConfirmed: () {
         final now = DateTime.now();
-        final durationMinutes = _detectedConfig?.durasiMenit ?? 90;
+        const durationMinutes = 90;
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
           formUrl: rawUrl,
-          deadlineAt: now.add(Duration(minutes: durationMinutes)),
+          deadlineAt: now.add(const Duration(minutes: durationMinutes)),
           durationMinutes: durationMinutes,
           serverCurrentTime: now,
           allowedDomains: const [
@@ -142,11 +182,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'googleusercontent.com',
             'forms.gle',
           ],
-          proctorPin: proctorPin,
-          mapel: _detectedConfig != null
-              ? '${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel}'
-              : null,
-          kelas: _detectedConfig?.kelas,
+          proctorPin: '1234',
+          mapel: 'Ujian Mandiri',
+          kelas: 'Umum',
         );
 
         Navigator.of(context).push(
@@ -159,8 +197,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   /// Dialog persiapan penguncian (Platform Specific: Android Immersive & iOS Guided Access)
-  void _showLockdownPreparationDialog({required VoidCallback onConfirmed}) {
+  void _showLockdownPreparationDialog({
+    AdminExamConfig? config,
+    required VoidCallback onConfirmed,
+  }) {
     final isIos = defaultTargetPlatform == TargetPlatform.iOS;
+    final targetConfig = config ?? _detectedConfig;
+    final title = targetConfig != null
+        ? '${targetConfig.tipeUjian != null && targetConfig.tipeUjian!.isNotEmpty ? "[${targetConfig.tipeUjian}] " : ""}${targetConfig.mapel}'
+        : 'Konfirmasi Ujian Exambro';
+    final subtitle = targetConfig != null
+        ? 'Kelas: ${targetConfig.kelas} • Durasi: ${targetConfig.durasiMenit} Menit'
+        : 'Durasi: 90 Menit • Mode Layar Penuh Aman';
 
     showModalBottomSheet(
       context: context,
@@ -190,14 +238,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Mode Ujian Terkunci Exambro',
+                          title,
                           style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        if (_detectedConfig != null)
-                          Text(
-                            '${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
-                            style: const TextStyle(fontSize: 13, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
-                          ),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(fontSize: 13, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
+                        ),
                       ],
                     ),
                   ),
@@ -207,26 +254,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
               if (isIos) ...[
                 const Text(
-                  'Petunjuk Pengguna iPhone / iPad (iOS):',
+                  'Petunjuk Siswa (iOS / iPadOS):',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '1. Layar ujian akan terkunci secara otomatis.\n'
-                  '2. Untuk mengunci tombol home dan notifikasi, aktifkan Akses Terpandu (Guided Access) dengan menekan tombol samping 3 kali.\n'
-                  '3. Berpindah aplikasi akan seketika mengunci ujian dan membutuhkan PIN Pengawas.',
+                  '1. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
+                  '2. Untuk mengunci tombol keluar, aktifkan Guided Access dengan menekan tombol power 3 kali.\n'
+                  '3. Berpindah aplikasi atau keluar dari ujian akan mewajibkan verifikasi PIN Pengawas.',
                   style: TextStyle(fontSize: 13, height: 1.4),
                 ),
               ] else ...[
                 const Text(
-                  'Petunjuk Pengguna Android:',
+                  'Petunjuk Siswa (Android):',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '1. Aplikasi akan masuk ke mode layar penuh Kiosk.\n'
-                  '2. Fitur tangkapan layar (screenshot) dan rekam layar dinonaktifkan.\n'
-                  '3. Berpindah aplikasi akan mengunci sesi ujian dan memerlukan PIN Pengawas.',
+                  '1. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
+                  '2. Aplikasi berjalan dalam mode layar penuh (Kiosk).\n'
+                  '3. Berpindah aplikasi atau keluar dari ujian akan mewajibkan verifikasi PIN Pengawas.',
                   style: TextStyle(fontSize: 13, height: 1.4),
                 ),
               ],
@@ -234,12 +281,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               const SizedBox(height: NetriSpacing.space6),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.play_arrow_rounded, size: 22),
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     onConfirmed();
                   },
-                  child: const Text('Saya Siap & Kunci Layar Ujian'),
+                  label: const Text('Mulai Mengerjakan Sekarang'),
                 ),
               ),
             ],
@@ -329,10 +377,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   const SizedBox(height: 12),
                   TextField(
                     controller: pinController,
-                    keyboardType: TextInputType.number,
+                    keyboardType: TextInputType.text,
                     decoration: const InputDecoration(
-                      labelText: 'PIN Pengawas (Buka Kunci)',
-                      hintText: 'Contoh: 7890',
+                      labelText: 'PIN Pengawas (Izin Keluar / Melanggar)',
+                      hintText: 'Contoh: 1234 atau 7890',
+                      helperText: 'PIN khusus ujian ini, hanya diminta saat siswa keluar/melanggar',
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -539,12 +588,45 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  /// TAB 1: SISWA (Input Link Kosong & Deteksi Otomatis PIN)
+  /// TAB 1: SISWA (Entitas Ujian Mandiri & Opsi Link Manual)
   Widget _buildStudentExamTab(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Tautan Google Form Ujian', style: theme.textTheme.labelLarge),
+        // 1. DAFTAR ENTITAS UJIAN AKTIF (Tiap Ujian Berdiri Sendiri dengan PIN Terpisah)
+        if (_adminConfigs.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(Icons.school_rounded, size: 20, color: NetriColors.brandLight),
+              const SizedBox(width: 8),
+              Text(
+                'Daftar Ujian Aktif (${_adminConfigs.length})',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Pilih ujian untuk langsung mulai mengerjakan tanpa memasukkan PIN:',
+            style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+          ),
+          const SizedBox(height: NetriSpacing.space3),
+
+          // Render tiap entitas ujian sebagai kartu mandiri
+          ..._adminConfigs.map((cfg) => _buildExamEntityCard(cfg, theme)),
+
+          const SizedBox(height: NetriSpacing.space3),
+          const Divider(),
+          const SizedBox(height: NetriSpacing.space2),
+        ],
+
+        // 2. SEKSI INPUT TAUTAN MANUAL (Jika guru memberikan link langsung)
+        Text(
+          _adminConfigs.isNotEmpty
+              ? 'Atau Masukkan Tautan Manual:'
+              : 'Tautan Google Form Ujian',
+          style: theme.textTheme.labelLarge,
+        ),
         const SizedBox(height: NetriSpacing.space1),
         TextField(
           controller: _urlController,
@@ -555,14 +637,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             suffixIcon: _urlController.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 18),
-                    onPressed: () => _urlController.clear(),
+                    onPressed: () {
+                      _urlController.clear();
+                      setState(() => _detectedConfig = null);
+                    },
                   )
                 : null,
           ),
         ),
         const SizedBox(height: NetriSpacing.space2),
 
-        // Indikator Deteksi Otomatis Jika Link Cocok dengan Data Admin
+        // Indikator Deteksi Otomatis Jika Link Cocok dengan Entitas Admin
         if (_detectedConfig != null) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -577,7 +662,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Terverifikasi: ${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} - ${_detectedConfig!.kelas} • ⏱️ ${_detectedConfig!.durasiMenit} Menit (PIN Pengawas Terpasang)',
+                    'Terhubung ke: ${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -591,54 +676,137 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: NetriSpacing.space3),
         ],
 
-        // Shortcut Daftar Ujian yang Dikonfigurasi Admin (Bisa langsung klik)
-        if (_adminConfigs.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          const Text('Atau pilih ujian yang terdaftar:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _adminConfigs.map((cfg) {
-              final isSelected = _detectedConfig?.id == cfg.id;
-              final prefix = cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty ? '[${cfg.tipeUjian}] ' : '';
-              return ActionChip(
-                avatar: Icon(
-                  isSelected ? Icons.check_circle : Icons.school_outlined,
-                  size: 16,
-                  color: isSelected ? Colors.white : NetriColors.brandLight,
-                ),
-                backgroundColor: isSelected ? NetriColors.brandLight : null,
-                label: Text(
-                  '$prefix${cfg.mapel} (${cfg.kelas})',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isSelected ? Colors.white : null,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-                onPressed: () {
-                  _urlController.text = cfg.linkGForm;
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: NetriSpacing.space3),
-        ],
-
-        const SizedBox(height: NetriSpacing.space2),
         ElevatedButton.icon(
           onPressed: _startStudentExam,
-          icon: const Icon(Icons.lock_outline_rounded, size: 20),
-          label: const Text('Buka Ujian Terkunci'),
+          icon: const Icon(Icons.play_arrow_rounded, size: 22),
+          label: const Text('Mulai Ujian'),
         ),
-        const SizedBox(height: NetriSpacing.space2),
+        const SizedBox(height: NetriSpacing.space1),
         Text(
-          'Tempelkan link Google Form dari guru untuk mulai mengerjakan.',
+          'Tidak memerlukan PIN untuk masuk. PIN Pengawas hanya diperlukan saat keluar ujian.',
           style: theme.textTheme.labelSmall,
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+
+  /// Kartu Entitas Ujian Mandiri (Menjamin isolasi total Mapel, Kelas, Durasi, dan PIN Pengawas)
+  Widget _buildExamEntityCard(AdminExamConfig cfg, ThemeData theme) {
+    final prefix = cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty ? cfg.tipeUjian! : 'UJIAN';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: NetriSpacing.space3),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(NetriRadius.md),
+        side: BorderSide(color: NetriColors.brandLight.withAlpha(60), width: 1.2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(NetriSpacing.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Baris Atas: Badge Tipe Ujian, Badge Kelas, Durasi
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: NetriColors.brandLight.withAlpha(25),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    prefix,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: NetriColors.brandLight,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withAlpha(25),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Kelas: ${cfg.kelas}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.timer_outlined, size: 14, color: NetriColors.brandLight),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${cfg.durasiMenit} Menit',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: NetriSpacing.space2),
+
+            // Nama Mata Pelajaran
+            Text(
+              cfg.mapel,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            // Catatan Keamanan Proteksi PIN
+            Row(
+              children: [
+                const Icon(Icons.verified_user_outlined, size: 13, color: NetriColors.stateSuccessLight),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Entitas mandiri • Proteksi PIN Pengawas aktif saat keluar/izin',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: NetriSpacing.space3),
+
+            // Tombol Mulai Ujian untuk Entitas Ini Secara Langsung
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NetriColors.brandLight,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(NetriRadius.sm),
+                  ),
+                ),
+                icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                label: Text(
+                  'Mulai Ujian ${cfg.mapel}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: () => _startExamFromEntity(cfg),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -888,14 +1056,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Salin ke Layar Siswa',
+                        tooltip: 'Buka & Kerjakan Ujian Ini',
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.play_circle_outline_rounded, size: 20, color: NetriColors.stateSuccessLight),
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 22, color: NetriColors.stateSuccessLight),
                         onPressed: () {
-                          _urlController.text = cfg.linkGForm;
                           _tabController.animateTo(0);
+                          _startExamFromEntity(cfg);
                         },
                       ),
                       IconButton(

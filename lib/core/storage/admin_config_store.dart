@@ -97,30 +97,57 @@ class AdminConfigStore {
     await prefs.setStringList(_storageKey, jsonListStr);
   }
 
+  /// Mengambil konfigurasi ujian berdasarkan ID spesifik
+  Future<AdminExamConfig?> getConfigById(String id) async {
+    final configs = await getAllConfigs();
+    try {
+      return configs.firstWhere((item) => item.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Ekstraksi ID formulir unik Google Forms untuk pencocokan yang akurat tanpa false-positive
+  static String? extractFormId(String rawUrl) {
+    final url = rawUrl.trim();
+    // 1. Format forms.gle/([a-zA-Z0-9_-]+)
+    final formsGleMatch = RegExp(r'forms\.gle/([a-zA-Z0-9_-]+)', caseSensitive: false).firstMatch(url);
+    if (formsGleMatch != null) return formsGleMatch.group(1)?.toLowerCase();
+
+    // 2. Format docs.google.com/forms/d/(?:e/)?([a-zA-Z0-9_-]+)
+    final gdocsMatch = RegExp(r'/forms/d/(?:e/)?([a-zA-Z0-9_-]+)', caseSensitive: false).firstMatch(url);
+    if (gdocsMatch != null) return gdocsMatch.group(1)?.toLowerCase();
+
+    return null;
+  }
+
   /// Mencocokkan link Google Form yang diinput siswa dengan database konfigurasi Admin
-  /// Menormalisasi URL (menghapus query trailing, http/https, spasi, viewform)
+  /// Menjamin entitas ujian tidak tertukar dan memprioritaskan kecocokan eksak
   Future<AdminExamConfig?> findConfigByUrl(String inputUrl) async {
     final cleanInput = normalizeUrl(inputUrl);
     if (cleanInput.isEmpty) return null;
 
     final configs = await getAllConfigs();
 
+    // 1. Pencocokan eksak 100% setelah normalisasi
     for (final cfg in configs) {
       final cleanTarget = normalizeUrl(cfg.linkGForm);
-      if (cleanTarget.isEmpty) continue;
-
-      // 1. Pencocokan eksak setelah normalisasi
-      if (cleanInput == cleanTarget) {
+      if (cleanTarget.isNotEmpty && cleanInput == cleanTarget) {
         return cfg;
       }
+    }
 
-      // 2. Pencocokan subpath unik (panjang minimal 15 karakter agar tidak false positive pada domain seperti forms.gle)
-      if (cleanInput.length >= 15 && cleanTarget.length >= 15) {
-        if (cleanInput.contains(cleanTarget) || cleanTarget.contains(cleanInput)) {
+    // 2. Pencocokan berdasarkan Form ID unik Google Forms jika ada
+    final inputFormId = extractFormId(inputUrl);
+    if (inputFormId != null && inputFormId.isNotEmpty) {
+      for (final cfg in configs) {
+        final targetFormId = extractFormId(cfg.linkGForm);
+        if (targetFormId != null && targetFormId == inputFormId) {
           return cfg;
         }
       }
     }
+
     return null;
   }
 

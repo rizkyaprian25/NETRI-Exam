@@ -112,17 +112,15 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                 // Jika terkunci: input PIN pengawas
                 if (isLocked) ...[
                   SizedBox(
-                    width: 240,
+                    width: 260,
                     child: TextField(
                       controller: _pinController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: TextInputType.text,
                       obscureText: true,
                       textAlign: TextAlign.center,
-                      maxLength: 4,
                       decoration: InputDecoration(
                         hintText: 'PIN Pengawas',
-                        counterText: '',
-                        errorText: _isIncorrectPin ? 'PIN salah' : null,
+                        errorText: _isIncorrectPin ? 'PIN Pengawas Salah!' : null,
                       ),
                       onSubmitted: (_) => _verifyPinAndUnlock(),
                     ),

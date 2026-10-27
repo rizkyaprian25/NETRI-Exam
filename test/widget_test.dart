@@ -17,7 +17,7 @@ void main() {
       // Memastikan logo dan elemen input Exambro muncul tanpa exception
       expect(find.byType(Image), findsOneWidget);
       expect(find.text('Exambro Android & iOS Mode'), findsOneWidget);
-      expect(find.text('Buka Ujian Terkunci'), findsOneWidget);
+      expect(find.text('Mulai Ujian'), findsOneWidget);
     });
 
     test('Validasi Desain Token Semantik (Apple HIG Contrast Safety)', () {
@@ -90,6 +90,13 @@ void main() {
       expect(norm1, equals('docs.google.com/forms/d/e/1faipqlsc_example'));
       expect(norm2, equals('docs.google.com/forms/d/e/1faipqlsc_example'));
       expect(norm1, equals(norm2));
+
+      // Test Form ID extraction & entity separation
+      final id1 = AdminConfigStore.extractFormId('https://docs.google.com/forms/d/e/1FAIpQLSc_Form1/viewform');
+      final id2 = AdminConfigStore.extractFormId('https://forms.gle/Form2Short');
+      expect(id1, equals('1faipqlsc_form1'));
+      expect(id2, equals('form2short'));
+      expect(id1, isNot(equals(id2)));
     });
   });
 }
