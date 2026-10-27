@@ -52,7 +52,9 @@ build/
 .idea/
 
 # Android / iOS Native Outputs
+.kotlin/
 android/.gradle/
+android/.kotlin/
 android/app/build/
 ios/Pods/
 ios/.symlinks/
