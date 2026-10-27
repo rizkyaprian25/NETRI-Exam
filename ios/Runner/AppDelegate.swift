@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import AudioToolbox
 import AVFoundation
+import AutomaticAssessmentConfiguration
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -9,6 +10,7 @@ import AVFoundation
   private var privacyShieldView: UIView?
   private var originalBrightness: CGFloat = 0.5
   private var alarmTimer: Timer?
+  private var assessmentSession: Any? // Menyimpan AEAssessmentSession pada iOS 13.4+
 
   override func application(
     _ application: UIApplication,
@@ -54,7 +56,29 @@ import AVFoundation
     UIScreen.main.brightness = 1.0
     UIApplication.shared.isIdleTimerDisabled = true
 
-    // 2. Deteksi Screenshot di iOS
+    // 2. Kunci Otomatis Mode Ujian Resmi Apple (Automatic Assessment Configuration)
+    if #available(iOS 13.4, *) {
+      let config = AEAssessmentConfiguration()
+      if #available(iOS 14.0, *) {
+        config.autocorrectMode = .none
+        config.allowsSpellCheck = false
+        config.allowsPredictiveKeyboard = false
+        config.allowsKeyboardShortcuts = false
+        config.allowsActivityContinuation = false
+        config.allowsDictation = false
+        config.allowsAccessibilitySpeech = false
+        config.allowsPasswordAutoFill = false
+        config.allowsContinuousPathInput = false
+      }
+      let session = AEAssessmentSession(configuration: config)
+      self.assessmentSession = session
+      session.begin()
+    }
+
+    // 3. Minta Penguncian Layar Tunggal Otomatis (Guided Access Session Request)
+    UIAccessibility.requestGuidedAccessSession(enabled: true) { _ in }
+
+    // 4. Deteksi Screenshot di iOS
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleScreenshotTaken),
@@ -62,7 +86,7 @@ import AVFoundation
       object: nil
     )
 
-    // 3. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
+    // 5. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
     if #available(iOS 11.0, *) {
       NotificationCenter.default.addObserver(
         self,
@@ -73,7 +97,7 @@ import AVFoundation
       checkScreenCapture()
     }
 
-    // 4. Deteksi saat aplikasi kehilangan fokus (App Switcher, Notifikasi, Control Center)
+    // 6. Deteksi Otomatis Saat Mencoba Keluar / Notifikasi / Control Center Ditarik
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleAppWillResignActive),
@@ -94,7 +118,18 @@ import AVFoundation
     removePrivacyShield()
     stopIosAlarmSound()
 
-    // Kembalikan kecerahan layar & timer istirahat
+    // 1. Akhiri Mode Ujian Apple Otomatis
+    if #available(iOS 13.4, *) {
+      if let session = self.assessmentSession as? AEAssessmentSession {
+        session.end()
+        self.assessmentSession = nil
+      }
+    }
+
+    // 2. Akhiri Sesi Guided Access
+    UIAccessibility.requestGuidedAccessSession(enabled: false) { _ in }
+
+    // 3. Kembalikan kecerahan layar & timer istirahat
     UIScreen.main.brightness = originalBrightness
     UIApplication.shared.isIdleTimerDisabled = false
   }
@@ -146,6 +181,7 @@ import AVFoundation
   }
 
   @objc private func handleAppWillResignActive() {
+    // Seketika tutup layar dengan perisai hitam pekat agar soal tidak bisa diintip saat gesture keluar
     showPrivacyShield()
     startIosAlarmSound(durationMs: 5000)
     lockdownChannel?.invokeMethod("onUserLeaveHint", arguments: nil)
