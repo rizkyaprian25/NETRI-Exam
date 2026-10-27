@@ -1,5 +1,5 @@
-// Layar Beranda NETRI Exam (Mode Bersih, Cepat & Ketat)
-// Input URL Manual, Scan QR Code Kamera, dan Mulai Ujian Tanpa PIN
+// Layar Beranda NETRI Exam (Responsif, Bersih, Anti-Curang)
+// Dilengkapi Input Link, Scan QR Kamera, dan Pengaturan Durasi Ujian di Halaman yang Sama
 
 import 'package:flutter/material.dart';
 import '../../contracts/models.dart';
@@ -16,15 +16,20 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _urlController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController(text: '90');
+  int _selectedDurationMinutes = 90;
   String? _errorMessage;
+
+  final List<int> _presetDurations = [30, 45, 60, 90, 120, 180];
 
   @override
   void dispose() {
     _urlController.dispose();
+    _durationController.dispose();
     super.dispose();
   }
 
-  /// Buka Pemindai QR Code untuk mengisi tautan ujian secara otomatis
+  /// Buka Pemindai QR Code kamera untuk mengisi tautan ujian secara instan
   Future<void> _scanQrCode() async {
     setState(() => _errorMessage = null);
     try {
@@ -54,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Gagal membuka kamera: $e');
+      setState(() => _errorMessage = 'Gagal mengakses kamera: $e');
     }
   }
 
@@ -72,17 +77,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Ambil durasi
+    int duration = int.tryParse(_durationController.text.trim()) ?? _selectedDurationMinutes;
+    if (duration <= 0) duration = 90;
+
     setState(() => _errorMessage = null);
 
     _showConfirmationBottomSheet(
+      durationMinutes: duration,
       onConfirmed: () {
         final now = DateTime.now();
-        const durationMinutes = 120; // 2 Jam standar
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
           formUrl: rawUrl,
-          deadlineAt: now.add(const Duration(minutes: durationMinutes)),
-          durationMinutes: durationMinutes,
+          deadlineAt: now.add(Duration(minutes: duration)),
+          durationMinutes: duration,
           serverCurrentTime: now,
           allowedDomains: const [
             'docs.google.com',
@@ -106,19 +115,20 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Konfirmasi sebelum mengunci layar penuh, kecerahan 100%, dan suara 100%
-  void _showConfirmationBottomSheet({required VoidCallback onConfirmed}) {
+  /// Lembar konfirmasi ringkas sebelum mengunci layar
+  void _showConfirmationBottomSheet({required int durationMinutes, required VoidCallback onConfirmed}) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(NetriRadius.lg)),
       ),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(NetriSpacing.space6),
+          padding: const EdgeInsets.all(NetriSpacing.space5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -128,20 +138,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: NetriColors.brandLight.withAlpha(25),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.security_rounded, color: NetriColors.brandLight, size: 28),
+                    child: const Icon(Icons.shield_rounded, color: NetriColors.brandLight, size: 26),
                   ),
                   const SizedBox(width: NetriSpacing.space3),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Mode Ujian Ketat (Anti-Curang)',
-                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
                         const Text(
-                          'Cahaya 100% • Suara 100% • Sirine Peringatan Aktif',
-                          style: TextStyle(fontSize: 12, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
+                          'Mode Ujian Ketat (Anti-Curang)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        Text(
+                          'Durasi: $durationMinutes Menit • Layar 100% • Suara 100%',
+                          style: const TextStyle(fontSize: 12, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -151,33 +161,33 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: NetriSpacing.space4),
 
               const Text(
-                'Peraturan Selama Ujian Berlangsung:',
+                'Peraturan Ujian:',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 6),
               const Text(
-                '• Kecerahan layar & volume suara disetel penuh (100%) dan tidak bisa dikecilkan.\n'
-                '• Dilarang berpindah aplikasi, meminimalkan layar, atau menekan tombol navigasi.\n'
-                '• Upaya keluar atau berpindah aplikasi akan membunyikan sirine peringatan keras selama 5 detik!',
+                '• Kecerahan layar & volume suara otomatis disetel 100% dan tidak dapat dikecilkan.\n'
+                '• Notifikasi ditutup dan dilarang membuka aplikasi lain.\n'
+                '• Mencoba keluar akan membunyikan sirine peringatan keras 5 detik!',
                 style: TextStyle(fontSize: 12, height: 1.4),
               ),
 
-              const SizedBox(height: NetriSpacing.space6),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: NetriColors.brandLight,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+              const SizedBox(height: NetriSpacing.space5),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: NetriColors.brandLight,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(NetriRadius.md),
                   ),
-                  icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    onConfirmed();
-                  },
-                  label: const Text('Saya Siap & Mulai Mengerjakan', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
+                icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  onConfirmed();
+                },
+                label: const Text('Saya Siap & Mulai Mengerjakan', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -192,169 +202,232 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(NetriSpacing.space6),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo Resmi NETRI Exam
-                  Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxHeight: 140, maxWidth: 220),
-                      padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space3),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(NetriRadius.md),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: NetriSpacing.space3),
-
-                  // Badge Status
-                  Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Center(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space4, vertical: NetriSpacing.space5),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: NetriColors.brandLight.withAlpha(20),
-                          borderRadius: BorderRadius.circular(NetriRadius.full),
-                          border: Border.all(color: NetriColors.brandLight.withAlpha(60)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.shield_rounded, size: 14, color: NetriColors.brandLight),
-                            SizedBox(width: 6),
-                            Text(
-                              'Aplikasi Ujian Aman (Anti-Curang)',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: NetriColors.brandLight,
-                              ),
+                      // Header Logo
+                      Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxHeight: 110, maxWidth: 200),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(NetriRadius.md),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
                             ),
-                          ],
+                          ),
                         ),
                       ),
+                      const SizedBox(height: NetriSpacing.space2),
+
+                      // Status Badge
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: NetriColors.brandLight.withAlpha(20),
+                            borderRadius: BorderRadius.circular(NetriRadius.full),
+                            border: Border.all(color: NetriColors.brandLight.withAlpha(60)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shield_rounded, size: 14, color: NetriColors.brandLight),
+                              SizedBox(width: 6),
+                              Text(
+                                'Aplikasi Ujian Aman (Anti-Curang)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: NetriColors.brandLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: NetriSpacing.space4),
+
+                      // Kartu Pengaturan & Masuk Ujian
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(NetriRadius.lg),
+                          side: BorderSide(color: theme.dividerColor.withAlpha(50), width: 1.2),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(NetriSpacing.space4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Bagian 1: Tautan Form
+                              Text(
+                                '1. Tautan Formulir Ujian',
+                                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Pindai QR Code dari pengawas atau tempel tautan form di sini:',
+                                style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+                              ),
+                              const SizedBox(height: NetriSpacing.space2),
+
+                              TextField(
+                                controller: _urlController,
+                                keyboardType: TextInputType.url,
+                                decoration: InputDecoration(
+                                  hintText: 'https://forms.gle/... atau docs.google.com...',
+                                  prefixIcon: const Icon(Icons.link_rounded),
+                                  suffixIcon: _urlController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear, size: 18),
+                                          onPressed: () => setState(() => _urlController.clear()),
+                                        )
+                                      : null,
+                                ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                              const SizedBox(height: NetriSpacing.space2),
+
+                              // Tombol Scan QR Code
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 11),
+                                  side: const BorderSide(color: NetriColors.brandLight),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(NetriRadius.sm),
+                                  ),
+                                ),
+                                onPressed: _scanQrCode,
+                                icon: const Icon(Icons.qr_code_scanner_rounded, size: 20, color: NetriColors.brandLight),
+                                label: const Text(
+                                  'Scan QR Code Soal',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: NetriColors.brandLight),
+                                ),
+                              ),
+
+                              const SizedBox(height: NetriSpacing.space4),
+                              const Divider(height: 1),
+                              const SizedBox(height: NetriSpacing.space3),
+
+                              // Bagian 2: Pengaturan Durasi Ujian
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '2. Durasi Ujian',
+                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: NetriColors.brandLight.withAlpha(20),
+                                      borderRadius: BorderRadius.circular(NetriRadius.sm),
+                                    ),
+                                    child: Text(
+                                      '$_selectedDurationMinutes Menit',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: NetriColors.brandLight,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Pilih estimasi waktu pengerjaan soal ujian:',
+                                style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+                              ),
+                              const SizedBox(height: NetriSpacing.space2),
+
+                              // Pilihan Chip Waktu Cepat
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: _presetDurations.map((mins) {
+                                  final isSelected = _selectedDurationMinutes == mins;
+                                  return ChoiceChip(
+                                    label: Text('$mins Mnt', style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : null)),
+                                    selected: isSelected,
+                                    selectedColor: NetriColors.brandLight,
+                                    visualDensity: VisualDensity.compact,
+                                    onSelected: (val) {
+                                      if (val) {
+                                        setState(() {
+                                          _selectedDurationMinutes = mins;
+                                          _durationController.text = mins.toString();
+                                        });
+                                      }
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+
+                              const SizedBox(height: NetriSpacing.space4),
+
+                              // Tombol Mulai Ujian Utama
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: NetriColors.brandLight,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(NetriRadius.md),
+                                  ),
+                                ),
+                                onPressed: _startExam,
+                                icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                                label: const Text(
+                                  'Mulai Ujian',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Pesan Kesalahan jika ada
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: NetriSpacing.space3),
+                        Container(
+                          padding: const EdgeInsets.all(NetriSpacing.space3),
+                          decoration: BoxDecoration(
+                            color: NetriColors.stateDangerLight.withAlpha(20),
+                            borderRadius: BorderRadius.circular(NetriRadius.sm),
+                            border: Border.all(color: NetriColors.stateDangerLight.withAlpha(60)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, size: 20, color: NetriColors.stateDangerLight),
+                              const SizedBox(width: NetriSpacing.space2),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(color: NetriColors.stateDangerLight, fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: NetriSpacing.space6),
-
-                  // Kartu Masuk Ujian
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(NetriRadius.lg),
-                      side: BorderSide(color: theme.dividerColor.withAlpha(50), width: 1.2),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(NetriSpacing.space5),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Tautan Formulir Ujian',
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Pindai QR Code dari pengawas atau tempel tautan Google Form di bawah ini:',
-                            style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
-                          ),
-                          const SizedBox(height: NetriSpacing.space3),
-
-                          // Input URL
-                          TextField(
-                            controller: _urlController,
-                            keyboardType: TextInputType.url,
-                            decoration: InputDecoration(
-                              hintText: 'https://forms.gle/... atau docs.google.com...',
-                              prefixIcon: const Icon(Icons.link_rounded),
-                              suffixIcon: _urlController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () => setState(() => _urlController.clear()),
-                                    )
-                                  : null,
-                            ),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                          const SizedBox(height: NetriSpacing.space3),
-
-                          // Tombol Scan QR Code
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: const BorderSide(color: NetriColors.brandLight),
-                            ),
-                            onPressed: _scanQrCode,
-                            icon: const Icon(Icons.qr_code_scanner_rounded, color: NetriColors.brandLight),
-                            label: const Text(
-                              'Scan QR Code Soal',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: NetriColors.brandLight),
-                            ),
-                          ),
-
-                          const SizedBox(height: NetriSpacing.space4),
-
-                          // Tombol Mulai Ujian
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: NetriColors.brandLight,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(NetriRadius.md),
-                              ),
-                            ),
-                            onPressed: _startExam,
-                            icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                            label: const Text(
-                              'Mulai Ujian',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Pesan Kesalahan jika ada
-                  if (_errorMessage != null) ...[
-                    const SizedBox(height: NetriSpacing.space4),
-                    Container(
-                      padding: const EdgeInsets.all(NetriSpacing.space3),
-                      decoration: BoxDecoration(
-                        color: NetriColors.stateDangerLight.withAlpha(20),
-                        borderRadius: BorderRadius.circular(NetriRadius.sm),
-                        border: Border.all(color: NetriColors.stateDangerLight.withAlpha(60)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline_rounded, size: 20, color: NetriColors.stateDangerLight),
-                          const SizedBox(width: NetriSpacing.space2),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(color: NetriColors.stateDangerLight, fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

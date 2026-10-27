@@ -1,6 +1,7 @@
 package com.netri.exam.netri_exam
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -29,14 +30,16 @@ class MainActivity : FlutterActivity() {
 
     private var alarmMediaPlayer: MediaPlayer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var alarmTimerRunnable: Runnable? = null
 
-    // Enforcer berkala untuk memastikan volume dan kecerahan tidak bisa dikecilkan selama ujian
+    // Loop pengawas aktif (setiap 500ms) untuk mengunci kecerahan 100%, volume 100%, dan menutup status bar
     private val lockdownEnforcerRunnable = object : Runnable {
         override fun run() {
             if (isLockdownActive) {
                 enforceMaxBrightness()
                 enforceMaxVolume()
-                mainHandler.postDelayed(this, 1000)
+                collapseStatusBar()
+                mainHandler.postDelayed(this, 500)
             }
         }
     }
@@ -71,27 +74,34 @@ class MainActivity : FlutterActivity() {
     private fun enableLockdown() {
         isLockdownActive = true
         runOnUiThread {
-            // 1. Blokir Tangkapan Layar & Jaga Layar Tetap Hidup
+            // 1. Blokir Tangkapan Layar & Jaga Layar Tetap Menyala
+            @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SECURE or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
 
-            // 2. Kecerahan Layar Maksimal (100% / 1.0f)
-            enforceMaxBrightness()
-
-            // 3. Suara / Volume Maksimal (100%)
+            // Simpan volume awal sebelum dipaksa ke maksimal
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             if (originalMusicVolume < 0) {
                 originalMusicVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                 originalAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
             }
+
+            // 2. Kecerahan Layar Maksimal (100% / 1.0f)
+            enforceMaxBrightness()
+
+            // 3. Suara / Volume Maksimal (100%)
             enforceMaxVolume()
 
-            // 4. Layar Penuh Immersive Sticky (Sembunyikan Status Bar & Navigasi Bar)
+            // 4. Layar Penuh Immersive Sticky (Sembunyikan Status Bar & Navigasi)
             applyImmersiveMode()
 
-            // 5. Jalankan loop pengawas agar kecerahan & volume tidak bisa dikecilkan
+            // 5. Tutup notifikasi jika sedang terbuka
+            collapseStatusBar()
+
+            // 6. Jalankan enforcer berkala agar tidak bisa dikecilkan atau dibuka notifikasinya
             mainHandler.removeCallbacks(lockdownEnforcerRunnable)
             mainHandler.post(lockdownEnforcerRunnable)
         }
@@ -103,13 +113,14 @@ class MainActivity : FlutterActivity() {
         stopAlarmSound()
 
         runOnUiThread {
-            // Hapus proteksi window
+            @Suppress("DEPRECATION")
             window.clearFlags(
                 WindowManager.LayoutParams.FLAG_SECURE or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
 
-            // Kembalikan kecerahan layar ke pengaturan bawaan sistem
+            // Kembalikan kecerahan layar ke pengaturan pengguna
             val layoutParams = window.attributes
             layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             window.attributes = layoutParams
@@ -142,27 +153,24 @@ class MainActivity : FlutterActivity() {
     private fun enforceMaxBrightness() {
         try {
             val layoutParams = window.attributes
-            if (layoutParams.screenBrightness != 1.0f) {
-                layoutParams.screenBrightness = 1.0f
-                window.attributes = layoutParams
-            }
+            layoutParams.screenBrightness = 1.0f // Kecerahan 100%
+            window.attributes = layoutParams
         } catch (e: Exception) {}
     }
 
     private fun enforceMaxVolume() {
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            val currentMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            if (currentMusic < maxMusic) {
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusic, 0)
+            // Buka mode mute jika ponsel dalam keadaan hening
+            if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
+                audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
             }
 
+            val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusic, 0)
+
             val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            val currentAlarm = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
-            if (currentAlarm < maxAlarm) {
-                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
-            }
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
         } catch (e: Exception) {}
     }
 
@@ -185,7 +193,31 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private var alarmTimerRunnable: Runnable? = null
+    // Menutup paksa laci notifikasi jika siswa mencoba menariknya dari atas
+    private fun collapseStatusBar() {
+        try {
+            val statusBarService = getSystemService("statusbar")
+            val statusBarManager = Class.forName("android.app.StatusBarManager")
+            val collapseMethod = statusBarManager.getMethod("collapsePanels")
+            collapseMethod.invoke(statusBarService)
+        } catch (e: Exception) {
+            try {
+                @Suppress("DEPRECATION")
+                val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                sendBroadcast(closeDialog)
+            } catch (e2: Exception) {}
+        }
+    }
+
+    // Menarik kembali aplikasi ke layar paling depan jika ada upaya keluar
+    private fun bringAppToFront() {
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {}
+    }
 
     private fun startAlarmSound(durationMs: Long = 5000L) {
         runOnUiThread {
@@ -207,13 +239,15 @@ class MainActivity : FlutterActivity() {
                         setDataSource(applicationContext, alarmUri)
                         isLooping = true
                         prepare()
-                        start()
                     }
-                } else if (!alarmMediaPlayer!!.isPlaying) {
-                    alarmMediaPlayer!!.start()
                 }
 
-                // Hentikan otomatis setelah durasi tertentu (bawaan: 5 detik)
+                alarmMediaPlayer?.setVolume(1.0f, 1.0f)
+                if (alarmMediaPlayer?.isPlaying == false) {
+                    alarmMediaPlayer?.start()
+                }
+
+                // Hentikan otomatis tepat setelah durasi tertentu (bawaan: 5 detik)
                 alarmTimerRunnable?.let { mainHandler.removeCallbacks(it) }
                 alarmTimerRunnable = Runnable {
                     stopAlarmSound()
@@ -261,19 +295,39 @@ class MainActivity : FlutterActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    // Deteksi jika jendela kehilangan fokus (misal notifikasi ditarik atau split screen)
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (isLockdownActive && hasFocus) {
-            enforceMaxBrightness()
-            enforceMaxVolume()
-            applyImmersiveMode()
+        if (isLockdownActive) {
+            if (!hasFocus) {
+                // Notifikasi ditarik atau recent apps dibuka: segera tutup dan bunyikan sirine
+                collapseStatusBar()
+                startAlarmSound(5000L)
+                bringAppToFront()
+            } else {
+                enforceMaxBrightness()
+                enforceMaxVolume()
+                applyImmersiveMode()
+            }
         }
     }
 
+    // Deteksi saat pengguna mencoba menekan tombol Home atau Recent Apps di Android
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Terdeteksi ketika siswa menekan tombol Home atau Recent Apps di Android
-        methodChannel?.invokeMethod("onUserLeaveHint", null)
+        if (isLockdownActive) {
+            startAlarmSound(5000L)
+            bringAppToFront()
+            methodChannel?.invokeMethod("onUserLeaveHint", null)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (isLockdownActive) {
+            startAlarmSound(5000L)
+            bringAppToFront()
+        }
     }
 
     override fun onDestroy() {
