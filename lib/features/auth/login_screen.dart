@@ -97,10 +97,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _showLockdownPreparationDialog(
       onConfirmed: () {
         final now = DateTime.now();
+        final durationMinutes = _detectedConfig?.durasiMenit ?? 90;
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
           formUrl: rawUrl,
-          deadlineAt: now.add(const Duration(minutes: 90)),
+          deadlineAt: now.add(Duration(minutes: durationMinutes)),
+          durationMinutes: durationMinutes,
           serverCurrentTime: now,
           allowedDomains: const [
             'docs.google.com',
@@ -161,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                         if (_detectedConfig != null)
                           Text(
-                            '${_detectedConfig!.mapel} (${_detectedConfig!.kelas})',
+                            '${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
                             style: const TextStyle(fontSize: 13, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
                           ),
                       ],
@@ -221,6 +223,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final kelasController = TextEditingController(text: editConfig?.kelas ?? '');
     final pinController = TextEditingController(text: editConfig?.pinPengawas ?? '');
     final linkController = TextEditingController(text: editConfig?.linkGForm ?? '');
+    final durasiController = TextEditingController(
+      text: editConfig != null ? editConfig.durasiMenit.toString() : '90',
+    );
     String? dialogError;
 
     showDialog(
@@ -265,6 +270,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 12),
                   TextField(
+                    controller: durasiController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Durasi Ujian (Menit)',
+                      hintText: 'Contoh: 60, 90, 120',
+                      suffixText: 'Menit',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    children: [30, 45, 60, 90, 120].map((mins) {
+                      return ActionChip(
+                        label: Text('$mins mnt', style: const TextStyle(fontSize: 11)),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          setDialogState(() {
+                            durasiController.text = mins.toString();
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
                     controller: linkController,
                     keyboardType: TextInputType.url,
                     decoration: const InputDecoration(
@@ -286,6 +317,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   final kelas = kelasController.text.trim();
                   final pin = pinController.text.trim();
                   final link = linkController.text.trim();
+                  final durasiText = durasiController.text.trim();
+                  final durasi = int.tryParse(durasiText) ?? 90;
 
                   if (mapel.isEmpty || kelas.isEmpty || pin.isEmpty || link.isEmpty) {
                     setDialogState(() => dialogError = 'Semua kolom wajib diisi!');
@@ -298,6 +331,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     kelas: kelas,
                     pinPengawas: pin,
                     linkGForm: link,
+                    durasiMenit: durasi > 0 ? durasi : 90,
                   );
 
                   await AdminConfigStore().saveConfig(newConfig);
@@ -478,7 +512,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Terverifikasi: ${_detectedConfig!.mapel} - ${_detectedConfig!.kelas} (PIN Pengawas Terpasang)',
+                    'Terverifikasi: ${_detectedConfig!.mapel} - ${_detectedConfig!.kelas} • ⏱️ ${_detectedConfig!.durasiMenit} Menit (PIN Pengawas Terpasang)',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -626,7 +660,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
                             Text(
-                              'Kelas: ${cfg.kelas} • PIN: ${cfg.pinPengawas}',
+                              'Kelas: ${cfg.kelas} • PIN: ${cfg.pinPengawas} • ⏱️ ${cfg.durasiMenit} Mnt',
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             Text(
@@ -645,6 +679,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           _urlController.text = cfg.linkGForm;
                           _tabController.animateTo(0);
                         },
+                      ),
+                      IconButton(
+                        tooltip: 'Edit Ujian',
+                        icon: const Icon(Icons.edit_outlined, size: 20, color: NetriColors.brandLight),
+                        onPressed: () => _showAddExamDialog(editConfig: cfg),
                       ),
                       IconButton(
                         tooltip: 'Hapus',

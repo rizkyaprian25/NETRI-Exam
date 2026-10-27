@@ -62,6 +62,10 @@ class LockdownService {
   Future<void> disableLockdown() async {
     _isLockdownActive = false;
     _currentSessionId = null;
+    _strikeCount = 0;
+    _appPausedTime = null;
+    onLockRequired = null;
+    onStrikeTriggered = null;
 
     try {
       await _channel.invokeMethod('disableSecureWindow');

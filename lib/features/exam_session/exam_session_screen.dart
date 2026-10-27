@@ -13,6 +13,7 @@ import '../lockdown/lockdown_service.dart';
 import 'exam_bar.dart';
 import 'lock_screen_dialog.dart';
 import '../result/result_screen.dart';
+import '../auth/login_screen.dart';
 
 class ExamSessionScreen extends StatefulWidget {
   final ActiveExamSession session;
@@ -77,6 +78,11 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             lockdown.unlockByProctor();
             _isLockDialogShowing = false;
             Navigator.of(ctx).pop();
+          },
+          onProctorExitToHome: () async {
+            _isLockDialogShowing = false;
+            Navigator.of(ctx).pop();
+            await _completeExamAndReturnHome();
           },
         ),
       );
@@ -214,8 +220,24 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ResultScreen(sessionId: widget.session.sessionId),
+        builder: (_) => ResultScreen(session: widget.session),
       ),
+    );
+  }
+
+  /// Mengakhiri sesi ujian dan langsung kembali bersih ke beranda
+  Future<void> _completeExamAndReturnHome() async {
+    _countdownTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    await LockdownService().disableLockdown();
+    await ApiClient().finishSession(widget.session.sessionId);
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+      (route) => false,
     );
   }
 
@@ -257,6 +279,17 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                 onPressed: () => Navigator.of(ctx).pop(),
                 child: const Text('Kembali ke Soal'),
               ),
+              OutlinedButton(
+                onPressed: () {
+                  if (pinController.text.trim() == widget.session.proctorPin) {
+                    Navigator.of(ctx).pop();
+                    _completeExamAndReturnHome();
+                  } else {
+                    setDialogState(() => isError = true);
+                  }
+                },
+                child: const Text('Keluar ke Beranda'),
+              ),
               ElevatedButton(
                 onPressed: () {
                   // Verifikasi PIN Pengawas khusus untuk ujian ini
@@ -267,7 +300,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     setDialogState(() => isError = true);
                   }
                 },
-                child: const Text('Konfirmasi Keluar'),
+                child: const Text('Selesai & Bukti'),
               ),
             ],
           );

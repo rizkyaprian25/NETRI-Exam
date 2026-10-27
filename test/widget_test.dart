@@ -70,15 +70,18 @@ void main() {
         kelas: 'XII MIPA 1',
         pinPengawas: '9988',
         linkGForm: 'https://docs.google.com/forms/d/e/1FAIpQLSc_Example/viewform?usp=sf_link',
+        durasiMenit: 60,
       );
 
       final json = config.toJson();
       expect(json['mapel'], equals('Matematika Peminatan'));
       expect(json['pin_pengawas'], equals('9988'));
+      expect(json['durasi_menit'], equals(60));
 
       final parsed = AdminExamConfig.fromJson(json);
       expect(parsed.pinPengawas, equals('9988'));
       expect(parsed.kelas, equals('XII MIPA 1'));
+      expect(parsed.durasiMenit, equals(60));
 
       // Test URL normalization
       final norm1 = AdminConfigStore.normalizeUrl('https://docs.google.com/forms/d/e/1FAIpQLSc_Example/viewform?usp=sf_link');

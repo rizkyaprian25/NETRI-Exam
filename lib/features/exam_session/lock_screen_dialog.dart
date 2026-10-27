@@ -9,6 +9,7 @@ class LockScreenDialog extends StatefulWidget {
   final String reason;
   final String expectedPin;
   final VoidCallback onProctorUnlocked;
+  final VoidCallback? onProctorExitToHome;
 
   const LockScreenDialog({
     super.key,
@@ -16,6 +17,7 @@ class LockScreenDialog extends StatefulWidget {
     required this.reason,
     this.expectedPin = '1234',
     required this.onProctorUnlocked,
+    this.onProctorExitToHome,
   });
 
   @override
@@ -26,10 +28,21 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
   final TextEditingController _pinController = TextEditingController();
   bool _isIncorrectPin = false;
 
-  void _verifyPin() {
-    // Verifikasi PIN Pengawas spesifik yang disetel untuk form ini
+  void _verifyPinAndUnlock() {
+    // Verifikasi PIN Pengawas untuk membuka kembali lembar ujian
     if (_pinController.text.trim() == widget.expectedPin) {
       widget.onProctorUnlocked();
+    } else {
+      setState(() {
+        _isIncorrectPin = true;
+      });
+    }
+  }
+
+  void _verifyPinAndExit() {
+    // Verifikasi PIN Pengawas untuk mengakhiri sesi dan kembali ke beranda
+    if (_pinController.text.trim() == widget.expectedPin) {
+      widget.onProctorExitToHome?.call();
     } else {
       setState(() {
         _isIncorrectPin = true;
@@ -111,14 +124,25 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                         counterText: '',
                         errorText: _isIncorrectPin ? 'PIN salah' : null,
                       ),
-                      onSubmitted: (_) => _verifyPin(),
+                      onSubmitted: (_) => _verifyPinAndUnlock(),
                     ),
                   ),
                   const SizedBox(height: NetriSpacing.space4),
                   ElevatedButton(
-                    onPressed: _verifyPin,
-                    child: const Text('Buka Kunci Sesi'),
+                    onPressed: _verifyPinAndUnlock,
+                    child: const Text('Buka Kunci & Lanjut Ujian'),
                   ),
+                  if (widget.onProctorExitToHome != null) ...[
+                    const SizedBox(height: NetriSpacing.space2),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: NetriColors.stateDangerLight,
+                      ),
+                      onPressed: _verifyPinAndExit,
+                      icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                      label: const Text('Akhiri Sesi & Kembali ke Beranda'),
+                    ),
+                  ],
                 ] else ...[
                   // Jika hanya peringatan (Strike 1)
                   ElevatedButton(

@@ -152,6 +152,7 @@ class ActiveExamSession {
   final String proctorPin;
   final String? mapel;
   final String? kelas;
+  final int durationMinutes;
 
   const ActiveExamSession({
     required this.sessionId,
@@ -162,6 +163,7 @@ class ActiveExamSession {
     this.proctorPin = '1234',
     this.mapel,
     this.kelas,
+    this.durationMinutes = 90,
   });
 
   factory ActiveExamSession.fromJson(Map<String, Object?> json) {
@@ -177,6 +179,7 @@ class ActiveExamSession {
       proctorPin: (json['proctor_pin'] as String?) ?? '1234',
       mapel: json['mapel'] as String?,
       kelas: json['kelas'] as String?,
+      durationMinutes: (json['duration_minutes'] as int?) ?? 90,
     );
   }
 }

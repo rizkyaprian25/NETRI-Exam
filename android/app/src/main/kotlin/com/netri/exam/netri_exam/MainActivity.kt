@@ -54,19 +54,12 @@ class MainActivity : FlutterActivity() {
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
             }
-
-            // 3. Upayakan Screen Pinning / Lock Task Mode jika didukung perangkat
-            try {
-                startLockTask()
-            } catch (_: Exception) {
-                // Fallback jika screen pinning ditolak OS
-            }
         }
     }
 
     private fun disableLockdown() {
         runOnUiThread {
-            // Hapus proteksi saat ujian selesai
+            // Hapus proteksi saat ujian selesai, kembalikan ke antarmuka normal tanpa mengunci perangkat OS
             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -74,11 +67,6 @@ class MainActivity : FlutterActivity() {
             } else {
                 @Suppress("DEPRECATION")
                 window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-            }
-
-            try {
-                stopLockTask()
-            } catch (_: Exception) {
             }
         }
     }
