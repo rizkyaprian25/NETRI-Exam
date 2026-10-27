@@ -1,10 +1,14 @@
 import Flutter
 import UIKit
+import AudioToolbox
+import AVFoundation
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var lockdownChannel: FlutterMethodChannel?
   private var privacyShieldView: UIView?
+  private var originalBrightness: CGFloat = 0.5
+  private var alarmTimer: Timer?
 
   override func application(
     _ application: UIApplication,
@@ -29,6 +33,13 @@ import UIKit
       case "disableSecureWindow":
         self.disableIosLockdown()
         result(true)
+      case "startAlarmSound":
+        let durationMs = (call.arguments as? [String: Any])?["durationMs"] as? Int ?? 5000
+        self.startIosAlarmSound(durationMs: durationMs)
+        result(true)
+      case "stopAlarmSound":
+        self.stopIosAlarmSound()
+        result(true)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -38,7 +49,12 @@ import UIKit
   private func enableIosLockdown() {
     NotificationCenter.default.removeObserver(self)
 
-    // 1. Deteksi Screenshot di iOS
+    // 1. Kecerahan Layar Maksimal 100% & Kunci Layar Tetap Menyala
+    originalBrightness = UIScreen.main.brightness
+    UIScreen.main.brightness = 1.0
+    UIApplication.shared.isIdleTimerDisabled = true
+
+    // 2. Deteksi Screenshot di iOS
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleScreenshotTaken),
@@ -46,7 +62,7 @@ import UIKit
       object: nil
     )
 
-    // 2. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
+    // 3. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
     if #available(iOS 11.0, *) {
       NotificationCenter.default.addObserver(
         self,
@@ -57,7 +73,7 @@ import UIKit
       checkScreenCapture()
     }
 
-    // 3. Deteksi saat aplikasi kehilangan fokus (App Switcher, Notifikasi, Control Center)
+    // 4. Deteksi saat aplikasi kehilangan fokus (App Switcher, Notifikasi, Control Center)
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleAppWillResignActive),
@@ -76,9 +92,40 @@ import UIKit
   private func disableIosLockdown() {
     NotificationCenter.default.removeObserver(self)
     removePrivacyShield()
+    stopIosAlarmSound()
+
+    // Kembalikan kecerahan layar & timer istirahat
+    UIScreen.main.brightness = originalBrightness
+    UIApplication.shared.isIdleTimerDisabled = false
+  }
+
+  private func startIosAlarmSound(durationMs: Int) {
+    stopIosAlarmSound()
+
+    // Mainkan nada peringatan darurat sistem iOS segera
+    AudioServicesPlayAlertSound(SystemSoundID(1005))
+    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+
+    let seconds = Double(durationMs) / 1000.0
+    let endTime = Date().addingTimeInterval(seconds)
+
+    // Ulangi nada sirine setiap 1 detik hingga durasi selesai
+    alarmTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+      if Date() >= endTime {
+        self?.stopIosAlarmSound()
+      } else {
+        AudioServicesPlayAlertSound(SystemSoundID(1005))
+      }
+    }
+  }
+
+  private func stopIosAlarmSound() {
+    alarmTimer?.invalidate()
+    alarmTimer = nil
   }
 
   @objc private func handleScreenshotTaken() {
+    startIosAlarmSound(durationMs: 5000)
     lockdownChannel?.invokeMethod("onScreenshotDetected", arguments: nil)
   }
 
@@ -90,6 +137,7 @@ import UIKit
     if #available(iOS 11.0, *) {
       if UIScreen.main.isCaptured {
         showPrivacyShield()
+        startIosAlarmSound(durationMs: 5000)
         lockdownChannel?.invokeMethod("onScreenshotDetected", arguments: "screen_recording")
       } else {
         removePrivacyShield()
@@ -99,11 +147,14 @@ import UIKit
 
   @objc private func handleAppWillResignActive() {
     showPrivacyShield()
+    startIosAlarmSound(durationMs: 5000)
     lockdownChannel?.invokeMethod("onUserLeaveHint", arguments: nil)
   }
 
   @objc private func handleAppDidBecomeActive() {
     removePrivacyShield()
+    // Pastikan kecerahan tetap 100% saat kembali aktif
+    UIScreen.main.brightness = 1.0
   }
 
   private func showPrivacyShield() {
