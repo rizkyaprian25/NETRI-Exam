@@ -431,50 +431,47 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo & Brand Header
+                  // Logo & Brand Header Resmi NETRI Exam
                   Center(
                     child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        color: NetriColors.brandLight.withAlpha(25),
-                        borderRadius: BorderRadius.circular(NetriRadius.lg),
-                      ),
-                      child: const Icon(
-                        Icons.lock_person_rounded,
-                        size: 34,
-                        color: NetriColors.brandLight,
+                      constraints: const BoxConstraints(maxHeight: 140, maxWidth: 220),
+                      padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space3),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(NetriRadius.md),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: NetriSpacing.space2),
-
-                  const Text(
-                    'EXAMBRO',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: NetriSpacing.space3),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
-                          color: NetriColors.stateSuccessLight.withAlpha(25),
-                          borderRadius: BorderRadius.circular(NetriRadius.sm),
-                        ),
-                        child: const Text(
-                          'Android & iOS Compatible',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: NetriColors.stateSuccessLight,
+                          color: NetriColors.stateSuccessLight.withAlpha(20),
+                          borderRadius: BorderRadius.circular(NetriRadius.full),
+                          border: Border.all(
+                            color: NetriColors.stateSuccessLight.withAlpha(60),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.verified_rounded, size: 13, color: NetriColors.stateSuccessLight),
+                            SizedBox(width: 5),
+                            Text(
+                              'Exambro Android & iOS Mode',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: NetriColors.stateSuccessLight,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

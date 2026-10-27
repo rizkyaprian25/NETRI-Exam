@@ -1,6 +1,7 @@
 // Smoke-Test Kritis untuk Exambro Lintas Platform (SOP SoftwareEngineer.md Seksi 9)
 // Memvalidasi bootstrap antarmuka, inisialisasi tema, dan kontrak data
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netri_exam/app.dart';
 import 'package:netri_exam/contracts/models.dart';
@@ -13,9 +14,9 @@ void main() {
       await tester.pumpWidget(const NetriExamApp());
       await tester.pumpAndSettle();
 
-      // Memastikan brand title dan elemen input Exambro muncul tanpa exception
-      expect(find.text('EXAMBRO'), findsOneWidget);
-      expect(find.text('Android & iOS Compatible'), findsOneWidget);
+      // Memastikan logo dan elemen input Exambro muncul tanpa exception
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('Exambro Android & iOS Mode'), findsOneWidget);
       expect(find.text('Buka Ujian Terkunci'), findsOneWidget);
     });
 
