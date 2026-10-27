@@ -22,6 +22,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   // Controller Tab 1: Siswa (Default kosong agar tidak perlu menghapus)
   final TextEditingController _urlController = TextEditingController();
 
+  // Status autentikasi PIN Guru / Admin
+  static const String _masterAdminPin = '20268237';
+  bool _isAdminAuthenticated = false;
+  final TextEditingController _adminPinInputController = TextEditingController();
+  String? _adminPinErrorMessage;
+
   // Daftar konfigurasi ujian tersimpan dari Admin
   List<AdminExamConfig> _adminConfigs = [];
   AdminExamConfig? _detectedConfig;
@@ -43,7 +49,31 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _urlController.removeListener(_checkUrlMatch);
     _tabController.dispose();
     _urlController.dispose();
+    _adminPinInputController.dispose();
     super.dispose();
+  }
+
+  void _verifyAdminPin() {
+    final input = _adminPinInputController.text.trim();
+    if (input == _masterAdminPin) {
+      setState(() {
+        _isAdminAuthenticated = true;
+        _adminPinErrorMessage = null;
+        _adminPinInputController.clear();
+      });
+    } else {
+      setState(() {
+        _adminPinErrorMessage = 'PIN Guru salah! Silakan coba lagi.';
+      });
+    }
+  }
+
+  void _lockAdmin() {
+    setState(() {
+      _isAdminAuthenticated = false;
+      _adminPinErrorMessage = null;
+      _adminPinInputController.clear();
+    });
   }
 
   Future<void> _loadAdminConfigs() async {
@@ -113,7 +143,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             'forms.gle',
           ],
           proctorPin: proctorPin,
-          mapel: _detectedConfig?.mapel,
+          mapel: _detectedConfig != null
+              ? '${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel}'
+              : null,
           kelas: _detectedConfig?.kelas,
         );
 
@@ -163,7 +195,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                         if (_detectedConfig != null)
                           Text(
-                            '${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
+                            '${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} (${_detectedConfig!.kelas}) • ⏱️ ${_detectedConfig!.durasiMenit} Menit',
                             style: const TextStyle(fontSize: 13, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
                           ),
                       ],
@@ -219,6 +251,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   /// Dialog Tambah Form Ujian Baru oleh Admin
   void _showAddExamDialog({AdminExamConfig? editConfig}) {
+    String selectedTipe = editConfig?.tipeUjian ?? 'UAS';
     final mapelController = TextEditingController(text: editConfig?.mapel ?? '');
     final kelasController = TextEditingController(text: editConfig?.kelas ?? '');
     final pinController = TextEditingController(text: editConfig?.pinPengawas ?? '');
@@ -244,10 +277,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13)),
                     const SizedBox(height: 8),
                   ],
+
+                  // Pilihan Tipe Ujian (UAS / UTS / dsb)
+                  const Text(
+                    'Tipe Ujian (UAS / UTS):',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: ['UAS', 'UTS', 'Ulangan Harian', 'Ujian Sekolah', 'Latihan'].map((tipe) {
+                      final isSel = selectedTipe == tipe;
+                      return ChoiceChip(
+                        label: Text(
+                          tipe,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isSel ? Colors.white : null,
+                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        selected: isSel,
+                        selectedColor: NetriColors.brandLight,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (val) {
+                          if (val) {
+                            setDialogState(() => selectedTipe = tipe);
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+
                   TextField(
                     controller: mapelController,
                     decoration: const InputDecoration(
-                      labelText: 'Mata Pelajaran (Mapel)',
+                      labelText: 'Nama Mata Pelajaran (Mapel)',
                       hintText: 'Contoh: Matematika Wajib',
                     ),
                   ),
@@ -332,6 +399,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     pinPengawas: pin,
                     linkGForm: link,
                     durasiMenit: durasi > 0 ? durasi : 90,
+                    tipeUjian: selectedTipe,
                   );
 
                   await AdminConfigStore().saveConfig(newConfig);
@@ -512,7 +580,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Terverifikasi: ${_detectedConfig!.mapel} - ${_detectedConfig!.kelas} • ⏱️ ${_detectedConfig!.durasiMenit} Menit (PIN Pengawas Terpasang)',
+                    'Terverifikasi: ${_detectedConfig!.tipeUjian != null && _detectedConfig!.tipeUjian!.isNotEmpty ? "[${_detectedConfig!.tipeUjian}] " : ""}${_detectedConfig!.mapel} - ${_detectedConfig!.kelas} • ⏱️ ${_detectedConfig!.durasiMenit} Menit (PIN Pengawas Terpasang)',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -536,6 +604,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             runSpacing: 6,
             children: _adminConfigs.map((cfg) {
               final isSelected = _detectedConfig?.id == cfg.id;
+              final prefix = cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty ? '[${cfg.tipeUjian}] ' : '';
               return ActionChip(
                 avatar: Icon(
                   isSelected ? Icons.check_circle : Icons.school_outlined,
@@ -544,7 +613,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 backgroundColor: isSelected ? NetriColors.brandLight : null,
                 label: Text(
-                  '${cfg.mapel} (${cfg.kelas})',
+                  '$prefix${cfg.mapel} (${cfg.kelas})',
                   style: TextStyle(
                     fontSize: 12,
                     color: isSelected ? Colors.white : null,
@@ -576,8 +645,88 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  /// TAB 2: ADMIN / GURU (+ GForm, Mapel, Kelas, Custom PIN Pengawas)
+  /// TAB 2: ADMIN / GURU (Dilindungi Gerbang PIN Master)
   Widget _buildAdminTab(ThemeData theme) {
+    if (!_isAdminAuthenticated) {
+      return _buildAdminPinGate(theme);
+    }
+    return _buildAdminDashboard(theme);
+  }
+
+  /// Gerbang Login Khusus Guru / Admin Menggunakan PIN
+  Widget _buildAdminPinGate(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(NetriSpacing.space5),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(NetriRadius.lg),
+        border: Border.all(color: theme.dividerColor.withAlpha(40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(NetriSpacing.space3),
+              decoration: BoxDecoration(
+                color: NetriColors.brandLight.withAlpha(25),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.admin_panel_settings_rounded,
+                color: NetriColors.brandLight,
+                size: 38,
+              ),
+            ),
+          ),
+          const SizedBox(height: NetriSpacing.space3),
+          Text(
+            'Panel Khusus Guru',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Masukkan PIN Admin untuk mengelola formulir ujian, kelas, dan PIN pengawas.',
+            style: theme.textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: NetriSpacing.space4),
+          TextField(
+            controller: _adminPinInputController,
+            keyboardType: TextInputType.number,
+            obscureText: true,
+            textAlign: TextAlign.center,
+            maxLength: 8,
+            style: const TextStyle(fontSize: 22, letterSpacing: 8, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: '• • • • • • • •',
+              hintStyle: const TextStyle(letterSpacing: 4),
+              counterText: '',
+              prefixIcon: const Icon(Icons.password_rounded, size: 20),
+              errorText: _adminPinErrorMessage,
+            ),
+            onSubmitted: (_) => _verifyAdminPin(),
+          ),
+          const SizedBox(height: NetriSpacing.space4),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _verifyAdminPin,
+              icon: const Icon(Icons.login_rounded, size: 18),
+              label: const Text(
+                'Buka Panel Guru',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dashboard Pengelolaan Formulir Ujian oleh Guru
+  Widget _buildAdminDashboard(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -587,18 +736,50 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Daftar Form Ujian', style: theme.textTheme.labelLarge),
-                Text('Kelola Mapel, Kelas, & PIN Pengawas', style: theme.textTheme.labelSmall),
+                Row(
+                  children: [
+                    Text(
+                      'Panel Guru',
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: NetriColors.stateSuccessLight.withAlpha(25),
+                        borderRadius: BorderRadius.circular(NetriRadius.sm),
+                      ),
+                      child: const Text(
+                        'Terbuka',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: NetriColors.stateSuccessLight,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text('Kelola Mapel UAS/UTS, Kelas, Waktu & PIN', style: theme.textTheme.labelSmall),
               ],
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                minimumSize: const Size(0, 36),
-              ),
-              onPressed: () => _showAddExamDialog(),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('+ GForm', style: TextStyle(fontSize: 13)),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Kunci Kembali Panel',
+                  icon: const Icon(Icons.lock_outline_rounded, size: 20, color: Colors.grey),
+                  onPressed: _lockAdmin,
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  onPressed: () => _showAddExamDialog(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('+ GForm', style: TextStyle(fontSize: 13)),
+                ),
+              ],
             ),
           ],
         ),
@@ -622,7 +803,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Klik tombol "+ GForm" di atas untuk menambahkan Mapel, Kelas, PIN Pengawas, dan Link Form.',
+                  'Klik tombol "+ GForm" di atas untuk menambahkan Mapel UAS/UTS, Kelas, Durasi, PIN Pengawas, dan Link Form.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   textAlign: TextAlign.center,
                 ),
@@ -655,12 +836,38 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              cfg.mapel,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            Row(
+                              children: [
+                                if (cfg.tipeUjian != null && cfg.tipeUjian!.isNotEmpty) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: NetriColors.brandLight.withAlpha(25),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      cfg.tipeUjian!,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: NetriColors.brandLight,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    cfg.mapel,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              'Kelas: ${cfg.kelas} • PIN: ${cfg.pinPengawas} • ⏱️ ${cfg.durasiMenit} Mnt',
+                              'Kelas: ${cfg.kelas} • ⏱️ ${cfg.durasiMenit} Mnt • PIN: ${cfg.pinPengawas}',
                               style: const TextStyle(fontSize: 12, color: Colors.grey),
                             ),
                             Text(

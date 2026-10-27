@@ -12,6 +12,7 @@ class AdminExamConfig {
   final String pinPengawas;
   final String linkGForm;
   final int durasiMenit;
+  final String? tipeUjian;
   final DateTime createdAt;
 
   AdminExamConfig({
@@ -21,6 +22,7 @@ class AdminExamConfig {
     required this.pinPengawas,
     required this.linkGForm,
     this.durasiMenit = 90,
+    this.tipeUjian,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -31,6 +33,7 @@ class AdminExamConfig {
         'pin_pengawas': pinPengawas,
         'link_gform': linkGForm,
         'durasi_menit': durasiMenit,
+        'tipe_ujian': tipeUjian,
         'created_at': createdAt.toIso8601String(),
       };
 
@@ -41,6 +44,7 @@ class AdminExamConfig {
         pinPengawas: json['pin_pengawas'] as String,
         linkGForm: json['link_gform'] as String,
         durasiMenit: (json['durasi_menit'] as int?) ?? 90,
+        tipeUjian: json['tipe_ujian'] as String?,
         createdAt: json['created_at'] != null
             ? DateTime.parse(json['created_at'] as String)
             : DateTime.now(),
