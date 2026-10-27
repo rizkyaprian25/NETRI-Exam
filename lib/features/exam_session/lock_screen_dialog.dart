@@ -7,12 +7,14 @@ import '../../core/theme/tokens.g.dart';
 class LockScreenDialog extends StatefulWidget {
   final int strikeCount;
   final String reason;
+  final String expectedPin;
   final VoidCallback onProctorUnlocked;
 
   const LockScreenDialog({
     super.key,
     required this.strikeCount,
     required this.reason,
+    this.expectedPin = '1234',
     required this.onProctorUnlocked,
   });
 
@@ -25,8 +27,8 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
   bool _isIncorrectPin = false;
 
   void _verifyPin() {
-    // PIN darurat pengawas default: "1234" (diintegrasikan ke server/token)
-    if (_pinController.text.trim() == '1234') {
+    // Verifikasi PIN Pengawas spesifik yang disetel untuk form ini
+    if (_pinController.text.trim() == widget.expectedPin) {
       widget.onProctorUnlocked();
     } else {
       setState(() {

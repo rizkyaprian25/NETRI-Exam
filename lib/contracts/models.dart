@@ -141,7 +141,7 @@ class ExamItem {
   }
 }
 
-/// Sesi Ujian yang Dilepas oleh Server
+/// Sesi Ujian yang Dilepas oleh Server atau Konfigurasi Mandiri
 @immutable
 class ActiveExamSession {
   final String sessionId;
@@ -149,6 +149,9 @@ class ActiveExamSession {
   final DateTime deadlineAt;
   final DateTime serverCurrentTime;
   final List<String> allowedDomains;
+  final String proctorPin;
+  final String? mapel;
+  final String? kelas;
 
   const ActiveExamSession({
     required this.sessionId,
@@ -156,6 +159,9 @@ class ActiveExamSession {
     required this.deadlineAt,
     required this.serverCurrentTime,
     required this.allowedDomains,
+    this.proctorPin = '1234',
+    this.mapel,
+    this.kelas,
   });
 
   factory ActiveExamSession.fromJson(Map<String, Object?> json) {
@@ -168,6 +174,9 @@ class ActiveExamSession {
       deadlineAt: DateTime.parse(json['deadline_at']! as String),
       serverCurrentTime: DateTime.parse(json['server_current_time']! as String),
       allowedDomains: domains,
+      proctorPin: (json['proctor_pin'] as String?) ?? '1234',
+      mapel: json['mapel'] as String?,
+      kelas: json['kelas'] as String?,
     );
   }
 }

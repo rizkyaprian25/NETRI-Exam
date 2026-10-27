@@ -72,6 +72,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
         builder: (ctx) => LockScreenDialog(
           strikeCount: 2,
           reason: 'PERINGATAN EXAMBRO: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
+          expectedPin: widget.session.proctorPin,
           onProctorUnlocked: () {
             lockdown.unlockByProctor();
             _isLockDialogShowing = false;
@@ -258,8 +259,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
               ),
               ElevatedButton(
                 onPressed: () {
-                  // PIN default pengawas: "1234"
-                  if (pinController.text.trim() == '1234') {
+                  // Verifikasi PIN Pengawas khusus untuk ujian ini
+                  if (pinController.text.trim() == widget.session.proctorPin) {
                     Navigator.of(ctx).pop();
                     _completeExam();
                   } else {
