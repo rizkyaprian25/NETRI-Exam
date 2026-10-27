@@ -728,55 +728,66 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Panel Guru',
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: NetriColors.stateSuccessLight.withAlpha(25),
-                        borderRadius: BorderRadius.circular(NetriRadius.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Panel Guru',
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      child: const Text(
-                        'Terbuka',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: NetriColors.stateSuccessLight,
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: NetriColors.stateSuccessLight.withAlpha(25),
+                          borderRadius: BorderRadius.circular(NetriRadius.sm),
+                        ),
+                        child: const Text(
+                          'Terbuka',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: NetriColors.stateSuccessLight,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                Text('Kelola Mapel UAS/UTS, Kelas, Waktu & PIN', style: theme.textTheme.labelSmall),
-              ],
-            ),
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Kunci Kembali Panel',
-                  icon: const Icon(Icons.lock_outline_rounded, size: 20, color: Colors.grey),
-                  onPressed: _lockAdmin,
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: const Size(0, 36),
+                    ],
                   ),
-                  onPressed: () => _showAddExamDialog(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('+ GForm', style: TextStyle(fontSize: 13)),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    'Kelola Mapel UAS/UTS, Kelas, Waktu & PIN',
+                    style: theme.textTheme.labelSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              tooltip: 'Kunci Kembali Panel',
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.lock_outline_rounded, size: 20, color: Colors.grey),
+              onPressed: _lockAdmin,
+            ),
+            const SizedBox(width: 6),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => _showAddExamDialog(),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('+ GForm', style: TextStyle(fontSize: 12)),
             ),
           ],
         ),
@@ -878,7 +889,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       IconButton(
                         tooltip: 'Salin ke Layar Siswa',
-                        icon: const Icon(Icons.play_circle_outline_rounded, size: 22, color: NetriColors.stateSuccessLight),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 20, color: NetriColors.stateSuccessLight),
                         onPressed: () {
                           _urlController.text = cfg.linkGForm;
                           _tabController.animateTo(0);
@@ -886,12 +900,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       IconButton(
                         tooltip: 'Edit Ujian',
-                        icon: const Icon(Icons.edit_outlined, size: 20, color: NetriColors.brandLight),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.edit_outlined, size: 18, color: NetriColors.brandLight),
                         onPressed: () => _showAddExamDialog(editConfig: cfg),
                       ),
                       IconButton(
                         tooltip: 'Hapus',
-                        icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
                         onPressed: () async {
                           await AdminConfigStore().deleteConfig(cfg.id);
                           await _loadAdminConfigs();
