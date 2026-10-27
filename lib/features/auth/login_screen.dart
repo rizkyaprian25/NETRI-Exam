@@ -271,9 +271,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '1. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
-                  '2. Aplikasi berjalan dalam mode layar penuh (Kiosk).\n'
-                  '3. Berpindah aplikasi atau keluar dari ujian akan mewajibkan verifikasi PIN Pengawas.',
+                  '1. Kecerahan layar & volume suara otomatis disetel penuh (100%) dan dikunci selama ujian.\n'
+                  '2. Lembar ujian langsung terbuka tanpa perlu PIN.\n'
+                  '3. Mencoba keluar atau berpindah aplikasi akan membunyikan alarm keras dan harus dibuka dengan PIN Pengawas.',
                   style: TextStyle(fontSize: 13, height: 1.4),
                 ),
               ],

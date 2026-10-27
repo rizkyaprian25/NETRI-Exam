@@ -246,68 +246,117 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final pinController = TextEditingController();
     bool isError = false;
 
+    // Bunyikan alarm suara keras saat ada upaya keluar dari ujian
+    LockdownService().startAlarmSound();
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final examName = widget.session.mapel != null && widget.session.mapel!.isNotEmpty
-              ? widget.session.mapel!
-              : 'Ujian Ini';
-          return AlertDialog(
-            title: const Text('Keluar Ujian (Otorisasi Pengawas)'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Siswa dilarang menutup ujian sendiri. Minta pengawas memasukkan PIN Pengawas untuk $examName:',
-                  style: const TextStyle(fontSize: 13, height: 1.4),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: pinController,
-                  keyboardType: TextInputType.text,
-                  obscureText: true,
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: 'Masukkan PIN Pengawas',
-                    errorText: isError ? 'PIN Pengawas Salah!' : null,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) {
+            final examName = widget.session.mapel != null && widget.session.mapel!.isNotEmpty
+                ? widget.session.mapel!
+                : 'Ujian Ini';
+            return AlertDialog(
+              title: Row(
+                children: const [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Upaya Keluar (Alarm Aktif)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
                   ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(20),
+                      borderRadius: BorderRadius.circular(NetriRadius.sm),
+                      border: Border.all(color: Colors.red.withAlpha(60)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.volume_up_rounded, color: Colors.red, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Alarm berbunyi keras! Minta pengawas memasukkan PIN untuk mematikan alarm.',
+                            style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Masukkan PIN Pengawas untuk $examName:',
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.text,
+                    obscureText: true,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      hintText: 'Masukkan PIN Pengawas',
+                      errorText: isError ? 'PIN Pengawas Salah! Alarm tetap berbunyi.' : null,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                OutlinedButton(
+                  onPressed: () {
+                    // Hanya bisa kembali jika memasukkan PIN yang benar
+                    if (pinController.text.trim() == widget.session.proctorPin) {
+                      LockdownService().stopAlarmSound();
+                      Navigator.of(ctx).pop();
+                    } else {
+                      setDialogState(() => isError = true);
+                    }
+                  },
+                  child: const Text('Matikan & Lanjut Ujian'),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  onPressed: () {
+                    if (pinController.text.trim() == widget.session.proctorPin) {
+                      LockdownService().stopAlarmSound();
+                      Navigator.of(ctx).pop();
+                      _completeExamAndReturnHome();
+                    } else {
+                      setDialogState(() => isError = true);
+                    }
+                  },
+                  child: const Text('Matikan & Ke Beranda'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    // Verifikasi PIN Pengawas khusus untuk ujian ini
+                    if (pinController.text.trim() == widget.session.proctorPin) {
+                      LockdownService().stopAlarmSound();
+                      Navigator.of(ctx).pop();
+                      _completeExam();
+                    } else {
+                      setDialogState(() => isError = true);
+                    }
+                  },
+                  child: const Text('Selesai & Bukti'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Kembali Mengerjakan'),
-              ),
-              OutlinedButton(
-                onPressed: () {
-                  if (pinController.text.trim() == widget.session.proctorPin) {
-                    Navigator.of(ctx).pop();
-                    _completeExamAndReturnHome();
-                  } else {
-                    setDialogState(() => isError = true);
-                  }
-                },
-                child: const Text('Keluar ke Beranda'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  // Verifikasi PIN Pengawas khusus untuk ujian ini
-                  if (pinController.text.trim() == widget.session.proctorPin) {
-                    Navigator.of(ctx).pop();
-                    _completeExam();
-                  } else {
-                    setDialogState(() => isError = true);
-                  }
-                },
-                child: const Text('Selesai & Bukti'),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

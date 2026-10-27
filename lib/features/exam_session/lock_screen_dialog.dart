@@ -75,22 +75,50 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    isLocked ? Icons.lock_rounded : Icons.info_outline_rounded,
+                    isLocked ? Icons.notifications_active_rounded : Icons.info_outline_rounded,
                     color: isLocked
                         ? NetriColors.stateDangerLight
                         : NetriColors.stateWarningLight,
                     size: 56,
                   ),
                 ),
-                const SizedBox(height: NetriSpacing.space5),
+                const SizedBox(height: NetriSpacing.space4),
 
                 // Judul
                 Text(
-                  isLocked ? 'Sesi Ujian Terkunci' : 'Pemberitahuan Sistem Ujian',
+                  isLocked ? '🚨 Sesi Ujian Terkunci (Alarm Aktif)' : 'Pemberitahuan Sistem Ujian',
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: NetriSpacing.space3),
+
+                // Banner Alarm Suara
+                if (isLocked) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(25),
+                      borderRadius: BorderRadius.circular(NetriRadius.md),
+                      border: Border.all(color: Colors.red.withAlpha(80)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.volume_up_rounded, color: Colors.red, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'ALARM PERINGATAN BERBUNYI',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: NetriSpacing.space3),
+                ],
 
                 // Pesan Non-Menuduh
                 Text(
@@ -101,13 +129,13 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                 const SizedBox(height: NetriSpacing.space2),
                 Text(
                   isLocked
-                      ? 'Silakan tunjukkan layar ini kepada pengawas ruang untuk membuka kunci sesi ujian.'
+                      ? 'Alarm berbunyi keras. Minta pengawas ruang memasukkan PIN Pengawas untuk mematikan alarm dan membuka kunci.'
                       : 'Catatan: Ujian direkam demi menjaga integritas bersama. Mohon tetap berada di aplikasi.',
                   style: theme.textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
 
-                const SizedBox(height: NetriSpacing.space6),
+                const SizedBox(height: NetriSpacing.space5),
 
                 // Jika terkunci: input PIN pengawas
                 if (isLocked) ...[
@@ -120,7 +148,7 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
                         hintText: 'PIN Pengawas',
-                        errorText: _isIncorrectPin ? 'PIN Pengawas Salah!' : null,
+                        errorText: _isIncorrectPin ? 'PIN Pengawas Salah! Alarm tetap aktif.' : null,
                       ),
                       onSubmitted: (_) => _verifyPinAndUnlock(),
                     ),
@@ -128,7 +156,7 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                   const SizedBox(height: NetriSpacing.space4),
                   ElevatedButton(
                     onPressed: _verifyPinAndUnlock,
-                    child: const Text('Buka Kunci & Lanjut Ujian'),
+                    child: const Text('Matikan Alarm & Lanjut Ujian'),
                   ),
                   if (widget.onProctorExitToHome != null) ...[
                     const SizedBox(height: NetriSpacing.space2),
@@ -138,7 +166,7 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                       ),
                       onPressed: _verifyPinAndExit,
                       icon: const Icon(Icons.exit_to_app_rounded, size: 18),
-                      label: const Text('Akhiri Sesi & Kembali ke Beranda'),
+                      label: const Text('Matikan Alarm & Ke Beranda'),
                     ),
                   ],
                 ] else ...[

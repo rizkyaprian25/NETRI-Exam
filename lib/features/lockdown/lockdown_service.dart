@@ -44,6 +44,20 @@ class LockdownService {
     }
   }
 
+  /// Membunyikan suara alarm peringatan keras (looping)
+  Future<void> startAlarmSound() async {
+    try {
+      await _channel.invokeMethod('startAlarmSound');
+    } catch (_) {}
+  }
+
+  /// Menghentikan suara alarm peringatan
+  Future<void> stopAlarmSound() async {
+    try {
+      await _channel.invokeMethod('stopAlarmSound');
+    } catch (_) {}
+  }
+
   /// Memulai mode penguncian ujian ala Exambro
   Future<void> enableLockdown(String sessionId) async {
     _currentSessionId = sessionId;
@@ -51,7 +65,7 @@ class LockdownService {
     _strikeCount = 0;
 
     try {
-      // Mengaktifkan proteksi screenshot & immersive lock di Android/iOS
+      // Mengaktifkan proteksi screenshot, kecerahan 100%, volume 100%, & immersive lock di Android/iOS
       await _channel.invokeMethod('enableSecureWindow');
     } on MissingPluginException {
       // Fallback jika di desktop simulator
@@ -68,6 +82,7 @@ class LockdownService {
     onStrikeTriggered = null;
 
     try {
+      await _channel.invokeMethod('stopAlarmSound');
       await _channel.invokeMethod('disableSecureWindow');
     } catch (_) {}
   }
@@ -89,7 +104,8 @@ class LockdownService {
 
     await OfflineViolationQueue().enqueue(event);
 
-    // Khas Exambro: Langsung kunci sesi dan minta pengawas memasukkan PIN
+    // Khas Exambro: Langsung bunyikan alarm suara keras, kunci sesi, dan minta pengawas memasukkan PIN
+    await startAlarmSound();
     onLockRequired?.call();
   }
 
@@ -131,6 +147,7 @@ class LockdownService {
     await OfflineViolationQueue().enqueue(event);
 
     if (!isExcused) {
+      await startAlarmSound();
       onLockRequired?.call();
     }
   }
@@ -151,6 +168,7 @@ class LockdownService {
     );
 
     await OfflineViolationQueue().enqueue(event);
+    await startAlarmSound();
     onLockRequired?.call();
   }
 
@@ -158,7 +176,8 @@ class LockdownService {
   bool get isLocked => _strikeCount >= 1;
 
   /// Membuka kunci setelah aksi pengawas memasukkan PIN
-  void unlockByProctor() {
+  Future<void> unlockByProctor() async {
     _strikeCount = 0;
+    await stopAlarmSound();
   }
 }
