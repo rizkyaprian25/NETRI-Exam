@@ -2,27 +2,20 @@ import Flutter
 import UIKit
 import AudioToolbox
 import AVFoundation
-import AutomaticAssessmentConfiguration
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
   private var lockdownChannel: FlutterMethodChannel?
   private var privacyShieldView: UIView?
   private var originalBrightness: CGFloat = 0.5
   private var alarmTimer: Timer?
-  private var assessmentSession: Any? // Menyimpan AEAssessmentSession pada iOS 13.4+
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
+    GeneratedPluginRegistrant.register(with: self)
 
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    
-    // Inisialisasi Platform Channel Penguncian iOS
     let controller = window?.rootViewController as! FlutterViewController
     lockdownChannel = FlutterMethodChannel(name: "com.netri.exam/lockdown", binaryMessenger: controller.binaryMessenger)
 
@@ -46,6 +39,8 @@ import AutomaticAssessmentConfiguration
         result(FlutterMethodNotImplemented)
       }
     }
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   private func enableIosLockdown() {
@@ -56,29 +51,10 @@ import AutomaticAssessmentConfiguration
     UIScreen.main.brightness = 1.0
     UIApplication.shared.isIdleTimerDisabled = true
 
-    // 2. Kunci Otomatis Mode Ujian Resmi Apple (Automatic Assessment Configuration)
-    if #available(iOS 13.4, *) {
-      let config = AEAssessmentConfiguration()
-      if #available(iOS 14.0, *) {
-        config.autocorrectMode = .none
-        config.allowsSpellCheck = false
-        config.allowsPredictiveKeyboard = false
-        config.allowsKeyboardShortcuts = false
-        config.allowsActivityContinuation = false
-        config.allowsDictation = false
-        config.allowsAccessibilitySpeech = false
-        config.allowsPasswordAutoFill = false
-        config.allowsContinuousPathInput = false
-      }
-      let session = AEAssessmentSession(configuration: config)
-      self.assessmentSession = session
-      session.begin()
-    }
-
-    // 3. Minta Penguncian Layar Tunggal Otomatis (Guided Access Session Request)
+    // 2. Minta Penguncian Layar Tunggal Otomatis (Guided Access Session Request)
     UIAccessibility.requestGuidedAccessSession(enabled: true) { _ in }
 
-    // 4. Deteksi Screenshot di iOS
+    // 3. Deteksi Screenshot di iOS
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleScreenshotTaken),
@@ -86,7 +62,7 @@ import AutomaticAssessmentConfiguration
       object: nil
     )
 
-    // 5. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
+    // 4. Deteksi Rekam Layar / Screen Capture di iOS (AirPlay, QuickTime, Recording)
     if #available(iOS 11.0, *) {
       NotificationCenter.default.addObserver(
         self,
@@ -97,7 +73,7 @@ import AutomaticAssessmentConfiguration
       checkScreenCapture()
     }
 
-    // 6. Deteksi Otomatis Saat Mencoba Keluar / Notifikasi / Control Center Ditarik
+    // 5. Deteksi Otomatis Saat Mencoba Keluar / Notifikasi / Control Center Ditarik
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleAppWillResignActive),
@@ -118,18 +94,10 @@ import AutomaticAssessmentConfiguration
     removePrivacyShield()
     stopIosAlarmSound()
 
-    // 1. Akhiri Mode Ujian Apple Otomatis
-    if #available(iOS 13.4, *) {
-      if let session = self.assessmentSession as? AEAssessmentSession {
-        session.end()
-        self.assessmentSession = nil
-      }
-    }
-
-    // 2. Akhiri Sesi Guided Access
+    // 1. Akhiri Sesi Guided Access
     UIAccessibility.requestGuidedAccessSession(enabled: false) { _ in }
 
-    // 3. Kembalikan kecerahan layar & timer istirahat
+    // 2. Kembalikan kecerahan layar & timer istirahat
     UIScreen.main.brightness = originalBrightness
     UIApplication.shared.isIdleTimerDisabled = false
   }

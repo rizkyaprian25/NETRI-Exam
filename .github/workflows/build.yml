@@ -29,6 +29,12 @@ jobs:
       - name: Jalankan Unit & Smoke Test
         run: flutter test
 
+      - name: Pasang Pods iOS (CocoaPods)
+        run: |
+          cd ios
+          pod install
+          cd ..
+
       - name: Kompilasi Proyek iOS (Release Mode)
         run: flutter build ios --release --no-codesign
 
