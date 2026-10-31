@@ -1,4 +1,4 @@
-// Service Penguncian Perangkat (Exambro Lockdown Engine)
+// Service Penguncian Perangkat (Exam NETRI Lockdown Engine)
 // Mendukung Android (FLAG_SECURE, Immersive Fullscreen, Lock Task)
 // dan iOS (Guided Access, Screenshot/Screen Recording Detection, Resign Active Shield)
 
@@ -58,7 +58,7 @@ class LockdownService {
     } catch (_) {}
   }
 
-  /// Memulai mode penguncian ujian ala Exambro
+  /// Memulai mode penguncian ujian ala Exam NETRI
   Future<void> enableLockdown(String sessionId) async {
     _currentSessionId = sessionId;
     _isLockdownActive = true;
@@ -104,7 +104,7 @@ class LockdownService {
 
     await OfflineViolationQueue().enqueue(event);
 
-    // Khas Exambro: Langsung bunyikan alarm suara keras, kunci sesi, dan minta pengawas memasukkan PIN
+    // Khas Exam NETRI: Langsung bunyikan alarm suara keras, kunci sesi, dan minta pengawas memasukkan PIN
     await startAlarmSound();
     onLockRequired?.call();
   }

@@ -1,4 +1,4 @@
-// Layar Sesi Ujian Terkunci (Exambro 100% Android & iOS Mode)
+// Layar Sesi Ujian Terkunci (Exam NETRI 100% Android & iOS Mode)
 // Mengintegrasikan WebView dengan whitelist domain, proteksi anti-copy JS,
 // penguncian tombol keluar via PIN Pengawas, dan Lockdown Engine
 
@@ -72,7 +72,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
         barrierDismissible: false,
         builder: (ctx) => LockScreenDialog(
           strikeCount: 2,
-          reason: 'PERINGATAN EXAMBRO: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
+          reason: 'PERINGATAN EXAM NETRI: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
           onDismissed: () {
             lockdown.unlockByProctor();
             _isLockDialogShowing = false;
@@ -107,7 +107,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   uri.host == domain || uri.host.endsWith('.$domain'));
 
               if (!isAllowed) {
-                debugPrint('[ExambroWebView] Navigasi luar diblokir: ${request.url}');
+                debugPrint('[ExamNetriWebView] Navigasi luar diblokir: ${request.url}');
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Akses ke tautan luar dilarang selama ujian berlangsung.'),
@@ -123,12 +123,12 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
 
       _webViewController!.loadRequest(Uri.parse(widget.session.formUrl));
     } catch (e) {
-      debugPrint('[ExambroWebView] Mode fallback aktif: $e');
+      debugPrint('[ExamNetriWebView] Mode fallback aktif: $e');
       setState(() => _isLoadingForm = false);
     }
   }
 
-  /// Menyuntikkan skrip anti-copy, anti-seleksi, dan nonaktifkan menu konteks (Khas Exambro)
+  /// Menyuntikkan skrip anti-copy, anti-seleksi, dan nonaktifkan menu konteks (Khas Exam NETRI)
   void _injectAntiCopyProtection() {
     if (_webViewController == null) return;
     const jsScript = '''
@@ -390,7 +390,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
               ),
               const SizedBox(height: NetriSpacing.space4),
               const Text(
-                'Exambro Lintas Platform Aktif',
+                'Exam NETRI Lintas Platform Aktif',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),

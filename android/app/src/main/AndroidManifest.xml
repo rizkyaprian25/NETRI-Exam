@@ -7,7 +7,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     
     <application
-        android:label="Exambro Lintas Platform"
+        android:label="Exam NETRI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

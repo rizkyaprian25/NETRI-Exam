@@ -134,7 +134,7 @@ class ResultScreen extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(NetriRadius.sm),
                                   ),
                                   child: const Text(
-                                    'EXAMBRO',
+                                    'EXAM NETRI',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,

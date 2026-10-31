@@ -13,7 +13,7 @@ class NetriExamApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlobalErrorBoundary(
       child: MaterialApp(
-        title: 'NETRI Exam',
+        title: 'Exam NETRI',
         debugShowCheckedModeBanner: false,
         theme: NetriTheme.lightTheme,
         darkTheme: NetriTheme.darkTheme,

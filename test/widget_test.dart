@@ -1,4 +1,4 @@
-// Smoke-Test Kritis untuk Exambro Lintas Platform (SOP SoftwareEngineer.md Seksi 9)
+// Smoke-Test Kritis untuk Exam NETRI Lintas Platform (SOP SoftwareEngineer.md Seksi 9)
 // Memvalidasi bootstrap antarmuka, inisialisasi tema, dan kontrak data
 
 import 'package:flutter/material.dart';
@@ -9,12 +9,12 @@ import 'package:netri_exam/core/storage/admin_config_store.dart';
 import 'package:netri_exam/core/theme/tokens.g.dart';
 
 void main() {
-  group('Exambro Smoke Checks', () {
-    testWidgets('App Shell berhasil dimuat dan menampilkan beranda Exambro', (WidgetTester tester) async {
+  group('Exam NETRI Smoke Checks', () {
+    testWidgets('App Shell berhasil dimuat dan menampilkan beranda Exam NETRI', (WidgetTester tester) async {
       await tester.pumpWidget(const NetriExamApp());
       await tester.pumpAndSettle();
 
-      // Memastikan logo dan elemen input Exambro muncul tanpa exception
+      // Memastikan logo dan elemen input Exam NETRI muncul tanpa exception
       expect(find.byType(Image), findsOneWidget);
       expect(find.text('Aplikasi Ujian Aman (Anti-Curang)'), findsOneWidget);
       expect(find.text('Scan QR Code Soal'), findsOneWidget);

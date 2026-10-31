@@ -198,7 +198,7 @@ import AutomaticAssessmentConfiguration
     let shield = UIView(frame: window.bounds)
     shield.backgroundColor = UIColor.black
     let label = UILabel(frame: shield.bounds)
-    label.text = "EXAMBRO TERKUNCI"
+    label.text = "EXAM NETRI TERKUNCI"
     label.textColor = UIColor.white
     label.textAlignment = .center
     label.font = UIFont.boldSystemFont(ofSize: 22)

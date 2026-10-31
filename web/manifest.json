@@ -1,6 +1,6 @@
 {
-    "name": "netri_exam",
-    "short_name": "netri_exam",
+    "name": "Exam NETRI",
+    "short_name": "Exam NETRI",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
