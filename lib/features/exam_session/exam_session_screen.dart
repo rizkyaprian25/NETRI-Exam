@@ -13,7 +13,6 @@ import '../lockdown/lockdown_service.dart';
 import 'exam_bar.dart';
 import 'lock_screen_dialog.dart';
 import '../result/result_screen.dart';
-import '../auth/login_screen.dart';
 
 class ExamSessionScreen extends StatefulWidget {
   final ActiveExamSession session;
@@ -219,39 +218,26 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Mengakhiri sesi ujian dan langsung kembali bersih ke beranda
-  Future<void> _completeExamAndReturnHome() async {
-    _countdownTimer?.cancel();
-    _heartbeatTimer?.cancel();
-    await LockdownService().disableLockdown();
-    await ApiClient().finishSession(widget.session.sessionId);
-
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
-      ),
-      (route) => false,
-    );
-  }
-
-  /// Dialog peringatan saat ada upaya keluar dari ujian (Sirine 5 Detik)
-  void _promptProctorExitDialog() {
-    // Bunyikan sirine peringatan 5 detik saat mencoba keluar
+  /// Dialog peringatan saat ada upaya keluar dari ujian lewat tombol kembali (Sirine 5 Detik)
+  void _onBackButtonPressed() {
+    // Bunyikan sirine peringatan 5 detik saat mencoba menekan tombol kembali
     LockdownService().startAlarmSound(durationMs: 5000);
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: Row(
-          children: const [
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NetriRadius.lg),
+        ),
+        title: const Row(
+          children: [
             Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Upaya Keluar (Sirine Aktif)',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                'Dilarang Keluar!',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red),
               ),
             ),
           ],
@@ -273,7 +259,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Sirine peringatan berbunyi selama 5 detik!',
+                      'Sirine peringatan aktif selama 5 detik!',
                       style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -282,7 +268,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             ),
             const SizedBox(height: 12),
             const Text(
-              'Ujian sedang berlangsung dalam mode ketat. Apakah Anda sudah selesai dan mengirimkan jawaban di Google Form?',
+              'Tombol kembali dinonaktifkan demi integritas ujian. Anda tidak diizinkan meninggalkan lembar ujian sebelum menyelesaikan seluruh soal.',
               style: TextStyle(fontSize: 13, height: 1.4),
             ),
           ],
@@ -299,14 +285,50 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             },
             child: const Text('Lanjut Mengerjakan Ujian'),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog konfirmasi sah jika siswa telah selesai mengisi Google Form
+  void _promptFinishEarlyDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NetriRadius.lg),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_outline_rounded, color: NetriColors.brandLight, size: 26),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Selesaikan Ujian?',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Pastikan Anda sudah menekan tombol Kirim / Submit pada Google Form sebelum menyelesaikan sesi ujian ini.',
+          style: TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
           TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Periksa Kembali'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NetriColors.brandLight,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () {
-              LockdownService().stopAlarmSound();
               Navigator.of(ctx).pop();
-              _completeExamAndReturnHome();
+              _completeExam();
             },
-            child: const Text('Sudah Selesai, Keluar Ujian'),
+            child: const Text('Ya, Sudah Selesai'),
           ),
         ],
       ),
@@ -336,8 +358,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        // Pencegahan tombol kembali: Wajib memasukkan PIN Pengawas
-        _promptProctorExitDialog();
+        // Pencegahan tombol kembali: Bunyikan sirine & ingatkan larangan keluar
+        _onBackButtonPressed();
       },
       child: Scaffold(
         appBar: ExamBar(
@@ -351,7 +373,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
               ),
             );
           },
-          onFinishEarly: _promptProctorExitDialog,
+          onFinishEarly: _promptFinishEarlyDialog,
         ),
         body: _buildExamBody(),
       ),
@@ -432,9 +454,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     onPressed: () => LockdownService().handleAppResignedActive(),
                   ),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.lock_open_rounded, size: 18),
-                    label: const Text('Keluar (Minta PIN)'),
-                    onPressed: _promptProctorExitDialog,
+                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    label: const Text('Selesai Ujian'),
+                    onPressed: _promptFinishEarlyDialog,
                   ),
                 ],
               ),
