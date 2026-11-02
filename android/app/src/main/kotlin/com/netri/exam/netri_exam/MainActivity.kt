@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
@@ -118,6 +119,9 @@ class MainActivity : FlutterActivity() {
             // 7. Jalankan enforcer berkala agar kecerahan dan volume tetap 100%
             mainHandler.removeCallbacks(lockdownEnforcerRunnable)
             mainHandler.post(lockdownEnforcerRunnable)
+
+            // 8. Blokir interaksi sentuhan jika ada aplikasi mengambang (floating apps / chat bubble) yang menutupi layar
+            window.decorView.filterTouchesWhenObscured = true
         }
     }
 
@@ -160,6 +164,11 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {}
                 originalAlarmVolume = -1
             }
+
+            // Kembalikan filter sentuhan
+            try {
+                window.decorView.filterTouchesWhenObscured = false
+            } catch (e: Exception) {}
 
             // Kembalikan antarmuka normal
             try {
@@ -392,6 +401,30 @@ class MainActivity : FlutterActivity() {
                 fallbackToneGenerator = null
             }
         }
+    }
+
+    // Menghilangkan opsi "Web Search" dan "Share" saat siswa memilih teks di WebView/aplikasi
+    override fun onActionModeStarted(mode: ActionMode?) {
+        if (isLockdownActive && mode != null) {
+            try {
+                val menu = mode.menu
+                val idsToRemove = mutableListOf<Int>()
+                for (i in 0 until menu.size()) {
+                    val item = menu.getItem(i)
+                    val title = item.title?.toString()?.lowercase() ?: ""
+                    // Hapus opsi pencarian web atau share aplikasi luar
+                    if (title.contains("search") || title.contains("cari") ||
+                        title.contains("share") || title.contains("bagikan") ||
+                        item.intent != null) {
+                        idsToRemove.add(item.itemId)
+                    }
+                }
+                for (id in idsToRemove) {
+                    menu.removeItem(id)
+                }
+            } catch (e: Exception) {}
+        }
+        super.onActionModeStarted(mode)
     }
 
     // Intersepsi seluruh event tombol sebelum masuk ke sub-komponen

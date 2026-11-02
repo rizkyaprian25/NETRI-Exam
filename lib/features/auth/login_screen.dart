@@ -1,5 +1,5 @@
 // Layar Beranda NETRI Exam (Responsif, Bersih, Anti-Curang)
-// Dilengkapi Input Link, Scan QR Kamera, dan Pengaturan Durasi Ujian di Halaman yang Sama
+// Dilengkapi Input Link Formulir Ujian, Scan QR Kamera, dan Penguncian Kiosk Penuh
 
 import 'package:flutter/material.dart';
 import '../../contracts/models.dart';
@@ -16,16 +16,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _urlController = TextEditingController();
-  final TextEditingController _durationController = TextEditingController(text: '90');
-  int _selectedDurationMinutes = 90;
   String? _errorMessage;
-
-  final List<int> _presetDurations = [30, 45, 60, 90, 120, 180];
 
   @override
   void dispose() {
     _urlController.dispose();
-    _durationController.dispose();
     super.dispose();
   }
 
@@ -77,21 +72,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Ambil durasi
-    int duration = int.tryParse(_durationController.text.trim()) ?? _selectedDurationMinutes;
-    if (duration <= 0) duration = 90;
-
     setState(() => _errorMessage = null);
 
     _showConfirmationBottomSheet(
-      durationMinutes: duration,
       onConfirmed: () {
         final now = DateTime.now();
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
           formUrl: rawUrl,
-          deadlineAt: now.add(Duration(minutes: duration)),
-          durationMinutes: duration,
+          deadlineAt: now.add(const Duration(hours: 12)),
+          durationMinutes: 0,
           serverCurrentTime: now,
           allowedDomains: const [
             'docs.google.com',
@@ -116,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Lembar konfirmasi ringkas sebelum mengunci layar
-  void _showConfirmationBottomSheet({required int durationMinutes, required VoidCallback onConfirmed}) {
+  void _showConfirmationBottomSheet({required VoidCallback onConfirmed}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -141,17 +131,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Icon(Icons.shield_rounded, color: NetriColors.brandLight, size: 26),
                   ),
                   const SizedBox(width: NetriSpacing.space3),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Mode Ujian Ketat (Anti-Curang)',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         Text(
-                          'Durasi: $durationMinutes Menit • Layar 100% • Suara 100%',
-                          style: const TextStyle(fontSize: 12, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
+                          'Pengawasan Guru • Layar 100% • Suara 100%',
+                          style: TextStyle(fontSize: 12, color: NetriColors.brandLight, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -269,9 +259,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Bagian 1: Tautan Form
+                              // Bagian: Tautan Form
                               Text(
-                                '1. Tautan Formulir Ujian',
+                                'Tautan Formulir Ujian',
                                 style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
@@ -313,88 +303,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   'Scan QR Code Soal',
                                   style: TextStyle(fontWeight: FontWeight.bold, color: NetriColors.brandLight),
                                 ),
-                              ),
-
-                              const SizedBox(height: NetriSpacing.space4),
-                              const Divider(height: 1),
-                              const SizedBox(height: NetriSpacing.space3),
-
-                              // Bagian 2: Pengaturan Durasi Ujian
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '2. Durasi Ujian',
-                                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: NetriColors.brandLight.withAlpha(20),
-                                      borderRadius: BorderRadius.circular(NetriRadius.sm),
-                                    ),
-                                    child: Text(
-                                      '$_selectedDurationMinutes Menit',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: NetriColors.brandLight,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Ketik durasi custom (menit) atau pilih preset cepat:',
-                                style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
-                              ),
-                              const SizedBox(height: NetriSpacing.space2),
-
-                              // Kotak Input Durasi Custom
-                              TextField(
-                                controller: _durationController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Atur Durasi Ujian (Menit Bebas)',
-                                  hintText: 'Misal: 15, 30, 45, 75, 90...',
-                                  prefixIcon: Icon(Icons.timer_outlined),
-                                  suffixText: 'Menit',
-                                ),
-                                onChanged: (val) {
-                                  final mins = int.tryParse(val.trim());
-                                  if (mins != null && mins > 0) {
-                                    setState(() => _selectedDurationMinutes = mins);
-                                  }
-                                },
-                              ),
-                              const SizedBox(height: NetriSpacing.space2),
-
-                              // Pilihan Chip Waktu Cepat
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: _presetDurations.map((mins) {
-                                  final isSelected = _selectedDurationMinutes == mins;
-                                  return ChoiceChip(
-                                    label: Text('$mins Mnt', style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : null)),
-                                    selected: isSelected,
-                                    selectedColor: NetriColors.brandLight,
-                                    visualDensity: VisualDensity.compact,
-                                    onSelected: (val) {
-                                      if (val) {
-                                        setState(() {
-                                          _selectedDurationMinutes = mins;
-                                          _durationController.text = mins.toString();
-                                        });
-                                      }
-                                    },
-                                  );
-                                }).toList(),
                               ),
 
                               const SizedBox(height: NetriSpacing.space4),

@@ -1,5 +1,5 @@
 // ExamBar: Bar Tipis Status Ujian (Apple HIG & UI/UX Pro Max)
-// Menampilkan timer tabular, status koneksi, dan tombol hubungi pengawas
+// Menampilkan status mode terkunci, status koneksi, dan tombol hubungi pengawas / selesai
 
 import 'package:flutter/material.dart';
 import '../../core/theme/tokens.g.dart';
@@ -11,14 +11,12 @@ enum ConnectionStatus {
 }
 
 class ExamBar extends StatelessWidget implements PreferredSizeWidget {
-  final int remainingSeconds;
   final ConnectionStatus connectionStatus;
   final VoidCallback onCallProctor;
   final VoidCallback onFinishEarly;
 
   const ExamBar({
     super.key,
-    required this.remainingSeconds,
     required this.connectionStatus,
     required this.onCallProctor,
     required this.onFinishEarly,
@@ -27,31 +25,10 @@ class ExamBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(NetriExamMetrics.examBarHeight);
 
-  String _formatDuration(int totalSeconds) {
-    if (totalSeconds <= 0) return '00:00';
-    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-
-    // Evaluasi ambang batas warna timer (5 menit peringatan, 1 menit bahaya)
-    Color timerColor;
-    IconData timerIcon;
-    if (remainingSeconds <= NetriExamMetrics.dangerThresholdSeconds) {
-      timerColor = isDark ? NetriColors.stateDangerDark : NetriColors.stateDangerLight;
-      timerIcon = Icons.alarm_on_rounded;
-    } else if (remainingSeconds <= NetriExamMetrics.warningThresholdSeconds) {
-      timerColor = isDark ? NetriColors.stateWarningDark : NetriColors.stateWarningLight;
-      timerIcon = Icons.access_time_filled_rounded;
-    } else {
-      timerColor = theme.textTheme.titleMedium?.color ?? Colors.black;
-      timerIcon = Icons.timer_outlined;
-    }
 
     return Container(
       height: preferredSize.height,
@@ -73,21 +50,29 @@ class ExamBar extends StatelessWidget implements PreferredSizeWidget {
             // Status Koneksi (StatusPill)
             _buildStatusPill(context),
 
-            // Sisa Waktu Ujian (Tabular Figures)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(timerIcon, size: 18, color: timerColor),
-                const SizedBox(width: NetriSpacing.space1),
-                Text(
-                  _formatDuration(remainingSeconds),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: timerColor,
-                    fontWeight: FontWeight.bold,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+            // Indikator Status Ujian Terkunci (Gantikan timer otomatis)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: NetriColors.brandLight.withAlpha(20),
+                borderRadius: BorderRadius.circular(NetriRadius.full),
+                border: Border.all(color: NetriColors.brandLight.withAlpha(50)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_rounded, size: 14, color: NetriColors.brandLight),
+                  SizedBox(width: 5),
+                  Text(
+                    'Exam NETRI (Terkunci)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: NetriColors.brandLight,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
             // Aksi Pengawas & Selesai

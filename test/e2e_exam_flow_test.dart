@@ -1,6 +1,6 @@
 // Test End-to-End (E2E) Komprehensif Skenario Lengkap Exam NETRI
-// Menguji Alur dari Validasi Input, Pengaturan Durasi, Penguncian Layar,
-// Pemblokiran Tombol Keluar, Sirine 5 Detik, hingga Penyelesaian Ujian
+// Menguji Alur dari Validasi Input, Penguncian Kiosk Layar Penuh (Tanpa Timer),
+// Pemblokiran Tombol Keluar, Sirine 5 Detik, hingga Penyelesaian Ujian yang Sah
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,7 +50,7 @@ void main() {
 
   group('Uji Alur E2E Ujian NETRI Exam:', () {
     testWidgets(
-      'Skenario Lengkap: Input Link -> Pilih Durasi -> Mulai Ujian -> Blokir Keluar & Sirine 5s -> Deteksi Pelanggaran -> Selesai Sah',
+      'Skenario Lengkap: Input Link -> Mulai Ujian -> Kiosk Terkunci -> Blokir Keluar & Sirine 5s -> Deteksi Pelanggaran -> Selesai Sah',
       (WidgetTester tester) async {
         // 1. Inisialisasi dan Muat Aplikasi
         await tester.pumpWidget(const NetriExamApp());
@@ -81,24 +81,17 @@ void main() {
           findsOneWidget,
         );
 
-        // 4. Uji Pengaturan Durasi Custom (Ketik bebas, misal 75 Menit)
-        final durationField = find.byType(TextField).last;
-        await tester.enterText(durationField, '75');
-        await tester.pumpAndSettle();
-
-        expect(find.text('75 Menit'), findsOneWidget);
-
-        // 5. Masukkan Tautan Google Form yang Sah
+        // 4. Masukkan Tautan Google Form yang Sah
         await tester.enterText(urlField, 'https://forms.gle/sampleExamNetri123');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
-        // 6. Verifikasi Modal Konfirmasi Bottom Sheet dengan Durasi Custom
+        // 5. Verifikasi Modal Konfirmasi Bottom Sheet
         expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
-        expect(find.textContaining('Durasi: 75 Menit'), findsOneWidget);
+        expect(find.textContaining('Pengawasan Guru • Layar 100% • Suara 100%'), findsOneWidget);
         expect(find.textContaining('Mencoba keluar akan membunyikan sirine'), findsOneWidget);
 
-        // 7. Mulai Ujian Secara Resmi
+        // 6. Mulai Ujian Secara Resmi
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
           'Saya Siap & Mulai Mengerjakan',
@@ -107,11 +100,12 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        // Verifikasi Lockdown Engine Aktif di Sisi Native
+        // Verifikasi Lockdown Engine Aktif di Sisi Native & Badge Terkunci Muncul
         expect(channelCallLog, contains('enableSecureWindow'));
         expect(find.byType(ExamSessionScreen), findsOneWidget);
+        expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
 
-        // 8. Uji Tombol Kembali (Back Navigation): Harus Diblokir & Membunyikan Sirine 5 Detik
+        // 7. Uji Tombol Kembali (Back Navigation): Harus Diblokir & Membunyikan Sirine 5 Detik
         channelCallLog.clear();
         channelArguments.clear();
 
@@ -139,7 +133,7 @@ void main() {
         expect(channelCallLog, contains('stopAlarmSound'));
         expect(find.text('Dilarang Keluar!'), findsNothing);
 
-        // 9. Uji Deteksi Percobaan Berpindah Aplikasi (Home / Recent Apps)
+        // 8. Uji Deteksi Percobaan Berpindah Aplikasi (Home / Recent Apps)
         channelCallLog.clear();
         await LockdownService().handleAppResignedActive();
         await tester.pumpAndSettle();
@@ -160,7 +154,7 @@ void main() {
 
         expect(find.byType(LockScreenDialog), findsNothing);
 
-        // 10. Uji Alur Selesai Ujian yang Sah (Via Tombol Selesai di ExamBar)
+        // 9. Uji Alur Selesai Ujian yang Sah (Via Tombol Selesai di ExamBar)
         final finishEarlyButton = find.widgetWithText(TextButton, 'Selesai');
         expect(finishEarlyButton, findsOneWidget);
         await tester.tap(finishEarlyButton);
@@ -193,7 +187,7 @@ void main() {
         expect(find.text('Sesi Ujian Selesai'), findsOneWidget);
         expect(find.text('Terkunci & Sah'), findsOneWidget);
 
-        // 11. Kembali Bersih ke Layar Beranda Login
+        // 10. Kembali Bersih ke Layar Beranda Login
         final backHomeButton = find.widgetWithText(ElevatedButton, 'Kembali ke Beranda');
         expect(backHomeButton, findsOneWidget);
         await tester.ensureVisible(backHomeButton);
@@ -206,18 +200,18 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Habis Waktu: Auto-Submit Jawaban Google Form saat Durasi 00:00 -> Transisi Otomatis ke ResultScreen',
+      'Skenario Kiosk Tanpa Timer Otomatis: Aplikasi Tetap Terkunci Stabil Tanpa Batas Waktu Mendadak',
       (WidgetTester tester) async {
         final now = DateTime.now();
         final session = ActiveExamSession(
-          sessionId: 'ses_auto_submit_test',
-          formUrl: 'https://forms.gle/autoSubmitTest123',
-          deadlineAt: now.add(const Duration(seconds: 2)),
-          durationMinutes: 1,
+          sessionId: 'ses_kiosk_no_timer_test',
+          formUrl: 'https://forms.gle/noTimerTest123',
+          deadlineAt: now.add(const Duration(hours: 12)),
+          durationMinutes: 0,
           serverCurrentTime: now,
           allowedDomains: const ['forms.gle', 'docs.google.com'],
           proctorPin: '',
-          mapel: 'Ujian Otomatis Selesai',
+          mapel: 'Ujian Mandiri Guru',
           kelas: 'Kelas Uji',
         );
 
@@ -230,18 +224,24 @@ void main() {
 
         expect(find.byType(ExamSessionScreen), findsOneWidget);
         expect(channelCallLog, contains('enableSecureWindow'));
+        expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
 
-        // Simulasikan berjalannya waktu hingga habis (2 detik)
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pump(const Duration(seconds: 1));
+        // Majukan waktu virtual selama 30 menit pengerjaan
+        await tester.pump(const Duration(minutes: 30));
+        await tester.pumpAndSettle();
 
-        // Dialog auto-submit muncul
-        expect(find.text('Waktu Ujian Habis'), findsOneWidget);
-        expect(find.textContaining('mengirimkan jawaban Anda secara otomatis'), findsOneWidget);
+        // Pastikan tidak ada dialog habis waktu yang memotong pengisian siswa
+        expect(find.text('Waktu Ujian Habis'), findsNothing);
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
 
-        // Tunggu grace period 3.5 detik untuk network submission selesai
-        await tester.pump(const Duration(milliseconds: 3600));
+        // Siswa menyelesaikan ujian secara wajar lewat tombol Selesai
+        final finishButton = find.widgetWithText(TextButton, 'Selesai');
+        await tester.tap(finishButton);
+        await tester.pumpAndSettle();
+
+        final confirmButton = find.widgetWithText(ElevatedButton, 'Ya, Sudah Selesai');
+        channelCallLog.clear();
+        await tester.tap(confirmButton);
         await tester.pumpAndSettle();
 
         // Pastikan lockdown dilepas dan berpindah ke ResultScreen secara sah
