@@ -276,51 +276,6 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Dialog konfirmasi sah jika siswa telah selesai mengisi Google Form
-  void _promptFinishEarlyDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(NetriRadius.lg),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_outline_rounded, color: NetriColors.brandLight, size: 26),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Selesaikan Ujian?',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ),
-          ],
-        ),
-        content: const Text(
-          'Pastikan Anda sudah menekan tombol Kirim / Submit pada Google Form sebelum menyelesaikan sesi ujian ini.',
-          style: TextStyle(fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Periksa Kembali'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: NetriColors.brandLight,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _completeExam();
-            },
-            child: const Text('Ya, Sudah Selesai'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
@@ -357,7 +312,6 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
               ),
             );
           },
-          onFinishEarly: _promptFinishEarlyDialog,
         ),
         body: _buildExamBody(),
       ),
@@ -438,9 +392,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     onPressed: () => LockdownService().handleAppResignedActive(),
                   ),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-                    label: const Text('Selesai Ujian'),
-                    onPressed: _promptFinishEarlyDialog,
+                    icon: const Icon(Icons.send_rounded, size: 18),
+                    label: const Text('Simulasi Kirim Form'),
+                    onPressed: _completeExam,
                   ),
                 ],
               ),

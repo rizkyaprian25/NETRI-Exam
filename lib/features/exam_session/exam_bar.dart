@@ -1,5 +1,5 @@
 // ExamBar: Bar Tipis Status Ujian (Apple HIG & UI/UX Pro Max)
-// Menampilkan status mode terkunci, status koneksi, dan tombol hubungi pengawas / selesai
+// Menampilkan status mode terkunci, status koneksi, dan tombol hubungi pengawas
 
 import 'package:flutter/material.dart';
 import '../../core/theme/tokens.g.dart';
@@ -13,13 +13,11 @@ enum ConnectionStatus {
 class ExamBar extends StatelessWidget implements PreferredSizeWidget {
   final ConnectionStatus connectionStatus;
   final VoidCallback onCallProctor;
-  final VoidCallback onFinishEarly;
 
   const ExamBar({
     super.key,
     required this.connectionStatus,
     required this.onCallProctor,
-    required this.onFinishEarly,
   });
 
   @override
@@ -75,28 +73,15 @@ class ExamBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
 
-            // Aksi Pengawas & Selesai
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'Hubungi Pengawas',
-                  icon: const Icon(Icons.help_outline_rounded, size: 22),
-                  onPressed: onCallProctor,
-                  constraints: const BoxConstraints(
-                    minWidth: NetriExamMetrics.minTouchTarget,
-                    minHeight: NetriExamMetrics.minTouchTarget,
-                  ),
-                ),
-                TextButton(
-                  onPressed: onFinishEarly,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space2),
-                    minimumSize: const Size(44, NetriExamMetrics.minTouchTarget),
-                  ),
-                  child: const Text('Selesai', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
+            // Aksi Hubungi Pengawas (Tombol Selesai ditiadakan agar siswa hanya bisa selesai via kirim form)
+            IconButton(
+              tooltip: 'Hubungi Pengawas',
+              icon: const Icon(Icons.help_outline_rounded, size: 22),
+              onPressed: onCallProctor,
+              constraints: const BoxConstraints(
+                minWidth: NetriExamMetrics.minTouchTarget,
+                minHeight: NetriExamMetrics.minTouchTarget,
+              ),
             ),
           ],
         ),

@@ -154,31 +154,16 @@ void main() {
 
         expect(find.byType(LockScreenDialog), findsNothing);
 
-        // 9. Uji Alur Selesai Ujian yang Sah (Via Tombol Selesai di ExamBar)
-        final finishEarlyButton = find.widgetWithText(TextButton, 'Selesai');
-        expect(finishEarlyButton, findsOneWidget);
-        await tester.tap(finishEarlyButton);
-        await tester.pumpAndSettle();
+        // 9. Verifikasi Tombol 'Selesai' di Top Bar Ditiadakan (Hanya Selesai via Kirim Form)
+        expect(find.text('Selesai'), findsNothing);
+        expect(find.widgetWithText(TextButton, 'Selesai'), findsNothing);
 
-        // Verifikasi Dialog Konfirmasi Selesai
-        expect(find.text('Selesaikan Ujian?'), findsOneWidget);
-
-        // Uji tombol "Periksa Kembali" jika siswa belum yakin
-        final cancelFinishButton = find.widgetWithText(TextButton, 'Periksa Kembali');
-        expect(cancelFinishButton, findsOneWidget);
-        await tester.tap(cancelFinishButton);
-        await tester.pumpAndSettle();
-        expect(find.text('Selesaikan Ujian?'), findsNothing);
-
-        // Buka kembali dialog selesai dan konfirmasi penyerahan
-        await tester.tap(finishEarlyButton);
-        await tester.pumpAndSettle();
-
-        final confirmFinishButton = find.widgetWithText(ElevatedButton, 'Ya, Sudah Selesai');
-        expect(confirmFinishButton, findsOneWidget);
+        // Siswa menyelesaikan pengisian dan menekan tombol Kirim pada Google Form
+        final submitFormButton = find.widgetWithText(ElevatedButton, 'Simulasi Kirim Form');
+        expect(submitFormButton, findsOneWidget);
 
         channelCallLog.clear();
-        await tester.tap(confirmFinishButton);
+        await tester.tap(submitFormButton);
         await tester.pumpAndSettle();
 
         // Verifikasi Mode Lockdown Dilepas & Navigasi ke ResultScreen
@@ -234,14 +219,13 @@ void main() {
         expect(find.text('Waktu Ujian Habis'), findsNothing);
         expect(find.byType(ExamSessionScreen), findsOneWidget);
 
-        // Siswa menyelesaikan ujian secara wajar lewat tombol Selesai
-        final finishButton = find.widgetWithText(TextButton, 'Selesai');
-        await tester.tap(finishButton);
-        await tester.pumpAndSettle();
+        // Pastikan tombol 'Selesai' di top bar tidak ada
+        expect(find.text('Selesai'), findsNothing);
 
-        final confirmButton = find.widgetWithText(ElevatedButton, 'Ya, Sudah Selesai');
+        // Siswa menyelesaikan ujian hanya saat form terkirim
+        final submitButton = find.widgetWithText(ElevatedButton, 'Simulasi Kirim Form');
         channelCallLog.clear();
-        await tester.tap(confirmButton);
+        await tester.tap(submitButton);
         await tester.pumpAndSettle();
 
         // Pastikan lockdown dilepas dan berpindah ke ResultScreen secara sah
