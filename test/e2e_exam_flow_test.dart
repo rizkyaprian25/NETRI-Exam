@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netri_exam/app.dart';
+import 'package:netri_exam/contracts/models.dart';
 import 'package:netri_exam/features/auth/login_screen.dart';
 import 'package:netri_exam/features/exam_session/exam_session_screen.dart';
 import 'package:netri_exam/features/exam_session/lock_screen_dialog.dart';
@@ -201,6 +202,52 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(LoginScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Skenario Habis Waktu: Auto-Submit Jawaban Google Form saat Durasi 00:00 -> Transisi Otomatis ke ResultScreen',
+      (WidgetTester tester) async {
+        final now = DateTime.now();
+        final session = ActiveExamSession(
+          sessionId: 'ses_auto_submit_test',
+          formUrl: 'https://forms.gle/autoSubmitTest123',
+          deadlineAt: now.add(const Duration(seconds: 2)),
+          durationMinutes: 1,
+          serverCurrentTime: now,
+          allowedDomains: const ['forms.gle', 'docs.google.com'],
+          proctorPin: '',
+          mapel: 'Ujian Otomatis Selesai',
+          kelas: 'Kelas Uji',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExamSessionScreen(session: session),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        expect(channelCallLog, contains('enableSecureWindow'));
+
+        // Simulasikan berjalannya waktu hingga habis (2 detik)
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+
+        // Dialog auto-submit muncul
+        expect(find.text('Waktu Ujian Habis'), findsOneWidget);
+        expect(find.textContaining('mengirimkan (submit) jawaban Anda secara otomatis'), findsOneWidget);
+
+        // Tunggu grace period 3.5 detik untuk network submission selesai
+        await tester.pump(const Duration(milliseconds: 3600));
+        await tester.pumpAndSettle();
+
+        // Pastikan lockdown dilepas dan berpindah ke ResultScreen secara sah
+        expect(channelCallLog, contains('disableSecureWindow'));
+        expect(find.byType(ResultScreen), findsOneWidget);
+        expect(find.text('Sesi Ujian Selesai'), findsOneWidget);
       },
     );
   });

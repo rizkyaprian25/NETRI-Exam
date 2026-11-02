@@ -32,6 +32,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   bool _isLoadingForm = true;
   ConnectionStatus _connectionStatus = ConnectionStatus.connected;
   bool _isLockDialogShowing = false;
+  bool _isAutoSubmitting = false;
+  bool _isExamCompleted = false;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -45,7 +47,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
 
     // Hitung sisa waktu dari server deadline
     final now = DateTime.now();
-    _remainingSeconds = widget.session.deadlineAt.difference(now).inSeconds;
+    final diff = widget.session.deadlineAt.difference(now).inSeconds;
+    _remainingSeconds = diff > 0 ? diff : (widget.session.durationMinutes * 60);
     if (_remainingSeconds <= 0) _remainingSeconds = 5400; // 90 menit fallback
 
     _initLockdown();
@@ -207,29 +210,144 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     }
   }
 
-  void _onTimeExpired() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Waktu Ujian Telah Habis'),
-        content: const Text(
-          'Waktu pengerjaan telah berakhir. Silakan serahkan jawaban Anda di Google Form sekarang.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _completeExam();
-            },
-            child: const Text('Konfirmasi Selesai'),
-          ),
-        ],
-      ),
-    );
+  /// Menekan tombol Kirim / Submit pada Google Form secara otomatis menggunakan skrip DOM
+  Future<void> _autoSubmitGoogleForm() async {
+    if (_webViewController == null) return;
+    const jsScript = '''
+      (function() {
+        try {
+          var buttons = document.querySelectorAll('div[role="button"], button, input[type="submit"]');
+          var submitBtn = null;
+          var nextBtn = null;
+
+          // 1. Cari tombol Kirim atau Submit persis
+          for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var text = (btn.innerText || btn.textContent || btn.value || '').trim().toLowerCase();
+            if (text === 'kirim' || text === 'submit') {
+              submitBtn = btn;
+              break;
+            } else if (text === 'berikutnya' || text === 'next') {
+              nextBtn = btn;
+            }
+          }
+
+          // 2. Jika tidak ditemukan persis, cari tombol yang mengandung kata kirim / submit
+          if (!submitBtn) {
+            for (var j = 0; j < buttons.length; j++) {
+              var b = buttons[j];
+              var t = (b.innerText || b.textContent || b.value || '').trim().toLowerCase();
+              if ((t.indexOf('kirim') !== -1 || t.indexOf('submit') !== -1) &&
+                  t.indexOf('batal') === -1 && t.indexOf('kembali') === -1 && t.indexOf('back') === -1) {
+                submitBtn = b;
+                break;
+              }
+            }
+          }
+
+          // 3. Eksekusi klik otomatis pada tombol yang ditemukan
+          if (submitBtn) {
+            submitBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
+            submitBtn.click();
+            return 'SUBMIT_CLICKED';
+          } else if (nextBtn) {
+            nextBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
+            nextBtn.click();
+            return 'NEXT_CLICKED';
+          } else {
+            var form = document.querySelector('form');
+            if (form) {
+              form.submit();
+              return 'FORM_SUBMITTED';
+            }
+          }
+          return 'NO_BUTTON_FOUND';
+        } catch (e) {
+          return 'ERROR: ' + e;
+        }
+      })();
+    ''';
+    try {
+      await _webViewController!.runJavaScript(jsScript);
+    } catch (e) {
+      debugPrint('[AutoSubmit] Gagal eksekusi JavaScript submit: $e');
+    }
   }
 
+  /// Penanganan otomatis saat durasi ujian habis (Otomatis Kirim / Submit Form)
+  Future<void> _onTimeExpired() async {
+    if (_isAutoSubmitting || _isExamCompleted) return;
+    _isAutoSubmitting = true;
+
+    // Tampilkan dialog proses kirim otomatis non-dismissible
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(NetriRadius.lg),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.timer_off_rounded, color: Colors.orange, size: 28),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Waktu Ujian Habis',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Waktu pengerjaan telah berakhir. Sistem sedang mengirimkan (submit) jawaban Anda secara otomatis agar nilai tetap tersimpan.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              const Center(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Mengirimkan lembar jawaban ke server Google...',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 1. Eksekusi auto-submit Google Form melalui JavaScript WebView
+    await _autoSubmitGoogleForm();
+
+    // 2. Berikan waktu tenggang (grace period) 3.5 detik agar payload jawaban terkirim via jaringan
+    await Future.delayed(const Duration(milliseconds: 3500));
+
+    // 3. Tutup dialog dan selesaikan ujian menuju ResultScreen
+    if (mounted) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      await _completeExam();
+    }
+  }
+
+  /// Mengakhiri sesi ujian secara aman dan memindahkan ke ResultScreen
   Future<void> _completeExam() async {
+    if (_isExamCompleted) return;
+    _isExamCompleted = true;
+
     _countdownTimer?.cancel();
     _heartbeatTimer?.cancel();
     await LockdownService().disableLockdown();
