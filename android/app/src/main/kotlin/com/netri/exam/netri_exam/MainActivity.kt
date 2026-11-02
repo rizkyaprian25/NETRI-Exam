@@ -4,9 +4,9 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.MediaPlayer
-import android.media.RingtoneManager
+import android.media.AudioTrack
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
@@ -30,8 +30,11 @@ class MainActivity : FlutterActivity() {
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
 
-    private var alarmMediaPlayer: MediaPlayer? = null
+    // AudioTrack untuk mensintesis suara sirine darurat yang tajam, keras, dan menusuk
+    private var sirenAudioTrack: AudioTrack? = null
     private var fallbackToneGenerator: ToneGenerator? = null
+    private var sirenPcmBuffer: ShortArray? = null
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var alarmTimerRunnable: Runnable? = null
 
@@ -260,53 +263,90 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // Menghasilkan 1 gelombang periodik penuh (0.4 detik = 2.5 siklus per detik)
+    // Suara sirine darurat wailing tajam dengan rentang frekuensi 600 Hz - 1400 Hz dan harmonik ke-3
+    private fun getOrCreateSirenBuffer(): ShortArray {
+        sirenPcmBuffer?.let { return it }
+        val sampleRate = 44100
+        val durationSeconds = 0.4 // 400ms per siklus sapuan frekuensi
+        val numSamples = (sampleRate * durationSeconds).toInt() // 17640 sampel
+        val buffer = ShortArray(numSamples)
+
+        val modFreq = 2.5 // Sapuan frekuensi 2.5 siklus per detik
+        val carrierFreq = 1000.0 // Frekuensi tengah 1000 Hz
+        val freqDeviation = 400.0 // Deviasi frekuensi (+- 400 Hz -> rentang 600 Hz s/d 1400 Hz)
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            // Integrasi fase untuk sapuan frekuensi kontinu:
+            // f(t) = carrierFreq - freqDeviation * cos(2*pi*modFreq*t)
+            // phase(t) = 2*pi * (carrierFreq * t - (freqDeviation / (2*pi*modFreq)) * sin(2*pi*modFreq*t))
+            val phase = 2.0 * Math.PI * (carrierFreq * t - (freqDeviation / (2.0 * Math.PI * modFreq)) * Math.sin(2.0 * Math.PI * modFreq * t))
+
+            // Tambahkan harmonik ke-3 (25%) dan sedikit saturasi agar menghasilkan suara sirine darurat yang keras, tajam, dan tidak lembut
+            val raw = 0.75 * Math.sin(phase) + 0.25 * Math.sin(3.0 * phase)
+            val sample = (raw / 0.85 * 32767.0).toInt().coerceIn(-32768, 32767)
+            buffer[i] = sample.toShort()
+        }
+        sirenPcmBuffer = buffer
+        return buffer
+    }
+
     private fun startAlarmSound(durationMs: Long = 5000L) {
         runOnUiThread {
             try {
                 enforceMaxVolume()
 
-                if (alarmMediaPlayer == null) {
-                    val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                // Hentikan pemutaran sebelumnya jika masih aktif
+                stopAlarmSound()
 
-                    if (alarmUri != null) {
-                        try {
-                            alarmMediaPlayer = MediaPlayer().apply {
-                                setAudioAttributes(
-                                    AudioAttributes.Builder()
-                                        .setUsage(AudioAttributes.USAGE_ALARM)
-                                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                                        .build()
-                                )
-                                setDataSource(applicationContext, alarmUri)
-                                isLooping = true
-                                prepare()
-                            }
-                        } catch (e: Exception) {
-                            alarmMediaPlayer = null
-                        }
-                    }
-                }
+                val buffer = getOrCreateSirenBuffer()
+                val sampleRate = 44100
 
-                if (alarmMediaPlayer != null) {
-                    alarmMediaPlayer?.setVolume(1.0f, 1.0f)
-                    if (alarmMediaPlayer?.isPlaying == false) {
-                        alarmMediaPlayer?.start()
-                    }
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+
+                val audioFormat = AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+
+                val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    AudioTrack.Builder()
+                        .setAudioAttributes(audioAttributes)
+                        .setAudioFormat(audioFormat)
+                        .setBufferSizeInBytes(buffer.size * 2)
+                        .setTransferMode(AudioTrack.MODE_STATIC)
+                        .build()
                 } else {
-                    // Fallback generator nada darurat jika berkas nada dering tidak ditemukan
-                    playFallbackTone(durationMs)
+                    @Suppress("DEPRECATION")
+                    AudioTrack(
+                        audioAttributes,
+                        audioFormat,
+                        buffer.size * 2,
+                        AudioTrack.MODE_STATIC,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE
+                    )
                 }
+
+                track.write(buffer, 0, buffer.size)
+                track.setLoopPoints(0, buffer.size, -1) // Loop sirine tak terputus
+                track.setVolume(1.0f)
+                track.play()
+
+                sirenAudioTrack = track
 
                 // Hentikan otomatis tepat setelah durasi tertentu (bawaan: 5 detik)
-                alarmTimerRunnable?.let { mainHandler.removeCallbacks(it) }
                 alarmTimerRunnable = Runnable {
                     stopAlarmSound()
                 }
                 mainHandler.postDelayed(alarmTimerRunnable!!, durationMs)
 
             } catch (e: Exception) {
+                // Cadangan ToneGenerator darurat jika AudioTrack gagal
                 playFallbackTone(durationMs)
             }
         }
@@ -328,19 +368,26 @@ class MainActivity : FlutterActivity() {
                     mainHandler.removeCallbacks(it)
                     alarmTimerRunnable = null
                 }
-                alarmMediaPlayer?.let {
-                    if (it.isPlaying) {
-                        it.stop()
-                    }
-                    it.release()
-                }
-                alarmMediaPlayer = null
 
-                fallbackToneGenerator?.stopTone()
-                fallbackToneGenerator?.release()
+                sirenAudioTrack?.let {
+                    try {
+                        if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                            it.stop()
+                        }
+                        it.release()
+                    } catch (e: Exception) {}
+                }
+                sirenAudioTrack = null
+
+                fallbackToneGenerator?.let {
+                    try {
+                        it.stopTone()
+                        it.release()
+                    } catch (e: Exception) {}
+                }
                 fallbackToneGenerator = null
             } catch (e: Exception) {
-                alarmMediaPlayer = null
+                sirenAudioTrack = null
                 fallbackToneGenerator = null
             }
         }
