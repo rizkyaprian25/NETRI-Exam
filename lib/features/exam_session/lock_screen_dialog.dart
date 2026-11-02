@@ -115,14 +115,17 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                           children: [
                             const Icon(Icons.volume_up_rounded, color: Colors.red, size: 18),
                             const SizedBox(width: 8),
-                            Text(
-                              _secondsLeft > 0
-                                  ? 'Sirine Peringatan Berbunyi ($_secondsLeft detik)'
-                                  : 'Sirine Telah Berakhir',
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                            Flexible(
+                              child: Text(
+                                _secondsLeft > 0
+                                    ? 'Sirine Peringatan Berbunyi ($_secondsLeft detik)'
+                                    : 'Sirine Telah Berakhir',
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

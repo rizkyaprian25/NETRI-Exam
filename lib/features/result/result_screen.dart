@@ -102,28 +102,34 @@ class ResultScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Header Kartu
+                            // Header Kartu Responsif
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.verified_rounded,
-                                      size: 18,
-                                      color: NetriColors.stateSuccessLight,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'BUKTI RESMI SELESAI',
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        letterSpacing: 1.1,
-                                        fontWeight: FontWeight.bold,
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.verified_rounded,
+                                        size: 18,
                                         color: NetriColors.stateSuccessLight,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          'BUKTI RESMI SELESAI',
+                                          style: theme.textTheme.labelMedium?.copyWith(
+                                            letterSpacing: 0.8,
+                                            fontWeight: FontWeight.bold,
+                                            color: NetriColors.stateSuccessLight,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
@@ -277,14 +283,18 @@ class ResultScreen extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: theme.textTheme.bodySmall?.color?.withAlpha(150)),
         const SizedBox(width: 8),
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.textTheme.bodySmall?.color?.withAlpha(180),
+        Expanded(
+          flex: 4,
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.textTheme.bodySmall?.color?.withAlpha(180),
+            ),
           ),
         ),
-        const Spacer(),
-        Flexible(
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 6,
           child: Text(
             value,
             textAlign: TextAlign.right,
