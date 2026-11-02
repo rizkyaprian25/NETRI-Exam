@@ -3,6 +3,7 @@
 // dan iOS (Guided Access, Screenshot/Screen Recording Detection, Resign Active Shield)
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../contracts/models.dart';
 import '../../core/storage/offline_queue.dart';
@@ -21,6 +22,7 @@ class LockdownService {
   bool _isLockdownActive = false;
   String? _currentSessionId;
   DateTime? _appPausedTime;
+  DateTime? _lockdownStartTime;
   int _strikeCount = 0;
 
   // Callback ke antarmuka ujian (untuk menampilkan dialog strike / lock)
@@ -62,6 +64,7 @@ class LockdownService {
   Future<void> enableLockdown(String sessionId) async {
     _currentSessionId = sessionId;
     _isLockdownActive = true;
+    _lockdownStartTime = DateTime.now();
     _strikeCount = 0;
 
     try {
@@ -76,6 +79,7 @@ class LockdownService {
   Future<void> disableLockdown() async {
     _isLockdownActive = false;
     _currentSessionId = null;
+    _lockdownStartTime = null;
     _strikeCount = 0;
     _appPausedTime = null;
     onLockRequired = null;
@@ -90,6 +94,12 @@ class LockdownService {
   /// Terdeteksi saat aplikasi kehilangan fokus atau berpindah ke latar belakang
   Future<void> handleAppResignedActive() async {
     if (!_isLockdownActive || _currentSessionId == null) return;
+
+    // Abaikan jika masih dalam masa tenggang awal (5 detik pertama) inisialisasi ujian
+    if (_lockdownStartTime != null &&
+        DateTime.now().difference(_lockdownStartTime!).inSeconds < 5) {
+      return;
+    }
 
     _strikeCount++;
     final event = ViolationEventModel(
@@ -118,6 +128,13 @@ class LockdownService {
   /// Menangani saat aplikasi kembali aktif (Resumed)
   Future<void> handleAppResumed() async {
     if (!_isLockdownActive || _appPausedTime == null || _currentSessionId == null) return;
+
+    // Abaikan jika masih dalam masa tenggang awal (5 detik pertama) inisialisasi ujian
+    if (_lockdownStartTime != null &&
+        DateTime.now().difference(_lockdownStartTime!).inSeconds < 5) {
+      _appPausedTime = null;
+      return;
+    }
 
     final resumeTime = DateTime.now();
     final durationSeconds = resumeTime.difference(_appPausedTime!).inSeconds;
@@ -179,5 +196,13 @@ class LockdownService {
   Future<void> unlockByProctor() async {
     _strikeCount = 0;
     await stopAlarmSound();
+  }
+
+  /// Khusus untuk pengujian otomatis: Memajukan waktu startup agar melewati masa tenggang
+  @visibleForTesting
+  void expireStartupGracePeriodForTesting() {
+    if (_lockdownStartTime != null) {
+      _lockdownStartTime = _lockdownStartTime!.subtract(const Duration(seconds: 10));
+    }
   }
 }

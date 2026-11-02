@@ -133,6 +133,10 @@ void main() {
         expect(channelCallLog, contains('stopAlarmSound'));
         expect(find.text('Dilarang Keluar!'), findsNothing);
 
+        // Majukan waktu agar melewati masa tenggang startup awal (5 detik)
+        await tester.pump(const Duration(seconds: 6));
+        LockdownService().expireStartupGracePeriodForTesting();
+
         // 8. Uji Deteksi Percobaan Berpindah Aplikasi (Home / Recent Apps)
         channelCallLog.clear();
         await LockdownService().handleAppResignedActive();

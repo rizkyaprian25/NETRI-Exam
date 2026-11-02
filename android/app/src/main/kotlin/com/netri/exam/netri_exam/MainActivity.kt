@@ -27,6 +27,9 @@ class MainActivity : FlutterActivity() {
     private var methodChannel: MethodChannel? = null
 
     private var isLockdownActive = false
+    private var lockdownStartTime: Long = 0L
+    private val STARTUP_GRACE_PERIOD_MS = 5000L
+
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
@@ -38,6 +41,14 @@ class MainActivity : FlutterActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var alarmTimerRunnable: Runnable? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Reset kondisi awal saat aplikasi baru dipasang/dibuka agar tidak ada sirine aktif
+        isLockdownActive = false
+        lockdownStartTime = 0L
+        stopAlarmSound()
+    }
 
     // Loop pengawas aktif (setiap 500ms) untuk mengunci kecerahan 100%, volume 100%, dan menutup status bar
     private val lockdownEnforcerRunnable = object : Runnable {
@@ -81,6 +92,7 @@ class MainActivity : FlutterActivity() {
 
     private fun enableLockdown() {
         isLockdownActive = true
+        lockdownStartTime = System.currentTimeMillis()
         runOnUiThread {
             // 1. Blokir tangkapan layar, layar penuh, dan cegah layar mati
             @Suppress("DEPRECATION")
@@ -89,6 +101,9 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
+
+            // Hentikan suara apapun yang sebelumnya sempat aktif
+            stopAlarmSound()
 
             // Simpan volume awal sebelum dipaksa ke maksimal
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -111,22 +126,36 @@ class MainActivity : FlutterActivity() {
             // 5. Tutup notifikasi jika sedang terbuka
             collapseStatusBar()
 
-            // 6. Kunci aplikasi menggunakan Screen Pinning / Lock Task bawaan sistem Android OS
+            // 6. Sembunyikan semua overlay & floating windows dari aplikasi lain (Android 12+ / API 31+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    window.setHideOverlayWindows(true)
+                } catch (e: Exception) {}
+            }
+
+            // 7. Matikan / Kill proses aplikasi floating apps (Google, Chrome, WA, browser lain)
+            terminateFloatingAndBackgroundApps()
+
+            // 8. Kunci aplikasi menggunakan Screen Pinning / Lock Task bawaan sistem Android OS
             try {
                 startLockTask()
             } catch (e: Exception) {}
 
-            // 7. Jalankan enforcer berkala agar kecerahan dan volume tetap 100%
+            // 9. Jalankan enforcer berkala agar kecerahan dan volume tetap 100%
             mainHandler.removeCallbacks(lockdownEnforcerRunnable)
             mainHandler.post(lockdownEnforcerRunnable)
 
-            // 8. Blokir interaksi sentuhan jika ada aplikasi mengambang (floating apps / chat bubble) yang menutupi layar
+            // 10. Blokir interaksi sentuhan jika ada aplikasi mengambang (floating apps / chat bubble) yang menutupi layar
             window.decorView.filterTouchesWhenObscured = true
+
+            // 11. Tarik paksa aplikasi ke layar paling depan
+            bringAppToFront()
         }
     }
 
     private fun disableLockdown() {
         isLockdownActive = false
+        lockdownStartTime = 0L
         mainHandler.removeCallbacks(lockdownEnforcerRunnable)
         stopAlarmSound()
 
@@ -135,6 +164,13 @@ class MainActivity : FlutterActivity() {
             try {
                 stopLockTask()
             } catch (e: Exception) {}
+
+            // Kembalikan visibilitas overlay jika sebelumnya disembunyikan
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    window.setHideOverlayWindows(false)
+                } catch (e: Exception) {}
+            }
 
             @Suppress("DEPRECATION")
             window.clearFlags(
@@ -271,6 +307,43 @@ class MainActivity : FlutterActivity() {
                 startActivity(intent)
             } catch (e2: Exception) {}
         }
+    }
+
+    // Menghentikan dan menutup paksa proses aplikasi browser, pencarian, dan chat yang sering dijadikan floating app
+    private fun terminateFloatingAndBackgroundApps() {
+        try {
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val targetPackages = listOf(
+                "com.android.chrome",
+                "com.google.android.googlequicksearchbox",
+                "com.google.android.apps.searchlite",
+                "org.mozilla.firefox",
+                "com.opera.browser",
+                "com.opera.mini.native",
+                "com.microsoft.emmx",
+                "com.sec.android.app.sbrowser",
+                "com.mi.globalbrowser",
+                "com.whatsapp",
+                "org.telegram.messenger",
+                "com.instagram.android",
+                "com.facebook.orca",
+                "com.facebook.katana",
+                "com.twitter.android",
+                "com.discord"
+            )
+            for (pkg in targetPackages) {
+                try {
+                    activityManager.killBackgroundProcesses(pkg)
+                } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {}
+
+        // Tutup dialog sistem, floating panels, dan laci notifikasi
+        try {
+            @Suppress("DEPRECATION")
+            val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+            sendBroadcast(closeDialog)
+        } catch (e: Exception) {}
     }
 
     // Menghasilkan 1 gelombang periodik penuh (0.4 detik = 2.5 siklus per detik)
@@ -474,11 +547,17 @@ class MainActivity : FlutterActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (isLockdownActive) {
+            val isWithinGracePeriod = (System.currentTimeMillis() - lockdownStartTime) < STARTUP_GRACE_PERIOD_MS
             if (!hasFocus) {
-                // Notifikasi ditarik atau recent apps dibuka: segera tutup, bunyikan sirine, dan tarik ke depan
+                // Notifikasi ditarik atau recent apps dibuka: segera tutup, bersihkan floating apps, dan tarik ke depan
                 collapseStatusBar()
-                startAlarmSound(5000L)
+                terminateFloatingAndBackgroundApps()
                 bringAppToFront()
+
+                // Bunyikan sirine darurat hanya jika di luar masa tenggang startup awal (5 detik)
+                if (!isWithinGracePeriod) {
+                    startAlarmSound(5000L)
+                }
             } else {
                 enforceMaxBrightness()
                 enforceMaxVolume()
@@ -491,17 +570,25 @@ class MainActivity : FlutterActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (isLockdownActive) {
-            startAlarmSound(5000L)
+            val isWithinGracePeriod = (System.currentTimeMillis() - lockdownStartTime) < STARTUP_GRACE_PERIOD_MS
+            terminateFloatingAndBackgroundApps()
             bringAppToFront()
-            methodChannel?.invokeMethod("onUserLeaveHint", null)
+            if (!isWithinGracePeriod) {
+                startAlarmSound(5000L)
+                methodChannel?.invokeMethod("onUserLeaveHint", null)
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
         if (isLockdownActive) {
-            startAlarmSound(5000L)
+            val isWithinGracePeriod = (System.currentTimeMillis() - lockdownStartTime) < STARTUP_GRACE_PERIOD_MS
+            terminateFloatingAndBackgroundApps()
             bringAppToFront()
+            if (!isWithinGracePeriod) {
+                startAlarmSound(5000L)
+            }
         }
     }
 

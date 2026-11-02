@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../contracts/models.dart';
 import '../../core/theme/tokens.g.dart';
 import '../exam_session/exam_session_screen.dart';
+import '../lockdown/lockdown_service.dart';
 import '../qr_scanner/qr_scanner_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,6 +18,13 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _urlController = TextEditingController();
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pastikan status penguncian dan suara alarm selalu nonaktif di layar login
+    LockdownService().disableLockdown();
+  }
 
   @override
   void dispose() {
