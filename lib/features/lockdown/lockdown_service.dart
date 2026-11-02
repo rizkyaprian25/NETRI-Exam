@@ -25,9 +25,10 @@ class LockdownService {
   DateTime? _lockdownStartTime;
   int _strikeCount = 0;
 
-  // Callback ke antarmuka ujian (untuk menampilkan dialog strike / lock)
+  // Callback ke antarmuka ujian (untuk menampilkan dialog strike / lock / tirai pelindung)
   void Function(int strikeCount, String reason)? onStrikeTriggered;
   void Function()? onLockRequired;
+  void Function(bool isPinned, bool isObscured)? onLockStateChanged;
 
   Future<void> _handleNativeCall(MethodCall call) async {
     if (!_isLockdownActive) return;
@@ -41,9 +42,67 @@ class LockdownService {
         // Terdeteksi tangkapan layar atau rekam layar dari iOS/Android
         await recordScreenshotAttempt();
         break;
+      case 'onObscuredDetected':
+        // Terdeteksi jendela mengambang (floating app) atau overlay di atas layar ujian
+        final args = call.arguments;
+        final reason = args is Map ? args['reason']?.toString() : null;
+        await recordOverlayDetected(reason: reason);
+        break;
+      case 'onLockStateChanged':
+        // Pembaruan status Sematkan Layar (Lock Task) dan status tertutup floating window
+        final args = call.arguments;
+        if (args is Map) {
+          final isPinned = args['isPinned'] == true;
+          final isObscured = args['isObscured'] == true;
+          onLockStateChanged?.call(isPinned, isObscured);
+        }
+        break;
       default:
         break;
     }
+  }
+
+  /// Memeriksa apakah layar bersih dari floating apps / split-screen sebelum ujian dimulai
+  Future<bool> checkScreenClear() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('checkScreenClear');
+      return result ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Memeriksa apakah aplikasi sudah terkunci dalam mode Lock Task (Screen Pinning / Kiosk)
+  Future<bool> isLockTaskActive() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('isLockTaskActive');
+      return result ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Meminta sistem Android mengaktifkan Lock Task (menutup otomatis floating apps yang aktif)
+  Future<bool> requestLockTask() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('requestLockTask');
+      return result ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Membuka pengaturan Keamanan Android agar pengguna dapat menyalakan fitur Sematkan Layar
+  Future<void> openSecuritySettings() async {
+    try {
+      await _channel.invokeMethod('openSecuritySettings');
+    } catch (_) {}
   }
 
   /// Membunyikan suara alarm sirine peringatan keras (bawaan 5 detik)
@@ -84,11 +143,32 @@ class LockdownService {
     _appPausedTime = null;
     onLockRequired = null;
     onStrikeTriggered = null;
+    onLockStateChanged = null;
 
     try {
       await _channel.invokeMethod('stopAlarmSound');
       await _channel.invokeMethod('disableSecureWindow');
     } catch (_) {}
+  }
+
+  /// Mencatat upaya membuka aplikasi mengambang (floating app) atau overlay di atas layar ujian
+  Future<void> recordOverlayDetected({String? reason}) async {
+    if (!_isLockdownActive || _currentSessionId == null) return;
+
+    _strikeCount++;
+    final event = ViolationEventModel(
+      id: 'evt_ovl_${DateTime.now().millisecondsSinceEpoch}',
+      sessionId: _currentSessionId!,
+      type: ViolationType.overlayDetected,
+      severity: ViolationSeverity.danger,
+      clientTimestamp: DateTime.now(),
+      isExcused: false,
+      notes: reason ?? 'Terdeteksi aplikasi mengambang (floating app) atau overlay di atas layar ujian',
+    );
+
+    await OfflineViolationQueue().enqueue(event);
+    await startAlarmSound();
+    onLockRequired?.call();
   }
 
   /// Terdeteksi saat aplikasi kehilangan fokus atau berpindah ke latar belakang

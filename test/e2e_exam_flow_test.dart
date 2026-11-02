@@ -238,5 +238,86 @@ void main() {
         expect(find.text('Sesi Ujian Selesai'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'Skenario Anti Floating Apps (Chrome Mengambang): Tolak Masuk Saat Ada Floating App & Tirai Kunci Layar',
+      (WidgetTester tester) async {
+        bool mockScreenClear = false;
+        bool mockPinned = false;
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.netri.exam/lockdown'),
+          (MethodCall methodCall) async {
+            channelCallLog.add(methodCall.method);
+            if (methodCall.method == 'checkScreenClear') {
+              return mockScreenClear;
+            }
+            if (methodCall.method == 'isLockTaskActive') {
+              return mockPinned;
+            }
+            if (methodCall.method == 'requestLockTask') {
+              mockPinned = true;
+              mockScreenClear = true;
+              return true;
+            }
+            return true;
+          },
+        );
+
+        await tester.pumpWidget(const NetriExamApp());
+        await tester.pumpAndSettle();
+
+        final urlField = find.byType(TextField).first;
+        await tester.enterText(urlField, 'https://forms.gle/floatingTest123');
+
+        // 1. Coba mulai ujian saat Chrome mengambang masih aktif (mockScreenClear = false)
+        final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        // Pastikan ditolak di layar Login dengan peringatan Floating App
+        expect(
+          find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
+          findsOneWidget,
+        );
+        expect(find.byType(ExamSessionScreen), findsNothing);
+
+        // 2. Setelah layar bersih di beranda, lanjutkan masuk ke ruang ujian namun belum di-pin (mockPinned = false)
+        mockScreenClear = true;
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        final confirmStartButton = find.widgetWithText(
+          ElevatedButton,
+          'Saya Siap & Mulai Mengerjakan',
+        );
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+
+        // 3. Karena belum di-pin (mockPinned = false), Tirai Pelindung wajib menutupi soal ujian
+        expect(
+          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          findsOneWidget,
+        );
+        final lockTaskButton = find.widgetWithText(
+          ElevatedButton,
+          'Kunci Layar & Tutup Floating Apps',
+        );
+        expect(lockTaskButton, findsOneWidget);
+
+        // 4. Tekan tombol 'Kunci Layar & Tutup Floating Apps' -> memanggil requestLockTask()
+        await tester.tap(lockTaskButton);
+        await tester.pumpAndSettle();
+
+        expect(channelCallLog, contains('requestLockTask'));
+        expect(
+          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          findsNothing,
+        );
+      },
+    );
   });
 }

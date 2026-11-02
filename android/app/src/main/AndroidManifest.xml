@@ -8,9 +8,8 @@
     <!-- Izin Keamanan Kiosk & Reorder Tasks untuk Mencegah Keluar Aplikasi -->
     <uses-permission android:name="android.permission.REORDER_TASKS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- Izin Keamanan Anti-Floating Apps & Sembunyikan Jendela Mengambang (Android 12+) -->
+    <!-- Izin Keamanan Sembunyikan Jendela Overlay (Android 12+) -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
     
     <application
         android:label="Exam NETRI"
@@ -36,6 +35,18 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Receiver Device Owner untuk Lock Task Mode penuh pada perangkat sekolah -->
+        <receiver
+            android:name=".NetriDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

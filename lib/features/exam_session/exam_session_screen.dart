@@ -31,6 +31,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   ConnectionStatus _connectionStatus = ConnectionStatus.connected;
   bool _isLockDialogShowing = false;
   bool _isExamCompleted = false;
+  bool _isPinned = true;
+  bool _isObscured = false;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -56,6 +58,25 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
+    // Pantau perubahan status Sematkan Layar (Lock Task) dan jendela mengambang (Floating Apps)
+    lockdown.onLockStateChanged = (bool isPinned, bool isObscured) {
+      if (!mounted) return;
+      setState(() {
+        _isPinned = isPinned;
+        _isObscured = isObscured;
+      });
+    };
+
+    // Verifikasi awal status Sematkan Layar dan kebersihan layar
+    lockdown.isLockTaskActive().then((pinned) {
+      if (!mounted) return;
+      setState(() => _isPinned = pinned);
+    });
+    lockdown.checkScreenClear().then((clear) {
+      if (!mounted) return;
+      setState(() => _isObscured = !clear);
+    });
+
     lockdown.onLockRequired = () {
       if (!mounted || _isLockDialogShowing) return;
       _isLockDialogShowing = true;
@@ -64,7 +85,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
         barrierDismissible: false,
         builder: (ctx) => LockScreenDialog(
           strikeCount: 2,
-          reason: 'PERINGATAN EXAM NETRI: Anda Terdeteksi Keluar atau Berpindah dari Aplikasi Ujian!',
+          reason: 'PERINGATAN EXAM NETRI: Anda Terdeteksi Keluar atau Membuka Aplikasi Mengambang!',
           onDismissed: () {
             lockdown.unlockByProctor();
             _isLockDialogShowing = false;
@@ -319,8 +340,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   }
 
   Widget _buildExamBody() {
+    Widget content;
     if (_isNativeMobilePlatform && _webViewController != null) {
-      return Stack(
+      content = Stack(
         children: [
           WebViewWidget(controller: _webViewController!),
           if (_isLoadingForm)
@@ -329,76 +351,188 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
             ),
         ],
       );
+    } else {
+      // Panel Simulator untuk Desktop & Web
+      content = Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(NetriSpacing.space6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(NetriSpacing.space4),
+                  decoration: BoxDecoration(
+                    color: NetriColors.brandLight.withAlpha(20),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_clock_rounded, size: 48, color: NetriColors.brandLight),
+                ),
+                const SizedBox(height: NetriSpacing.space4),
+                const Text(
+                  'Exam NETRI Lintas Platform Aktif',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: NetriSpacing.space2),
+                Text(
+                  'Di Android & iOS, Google Form tampil 100% fullscreen dengan proteksi anti-screenshot, anti-copy teks, dan penguncian tombol home.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700, height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: NetriSpacing.space4),
+                Container(
+                  padding: const EdgeInsets.all(NetriSpacing.space3),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withAlpha(20),
+                    borderRadius: BorderRadius.circular(NetriRadius.sm),
+                  ),
+                  child: SelectableText(
+                    widget.session.formUrl,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                ),
+                const SizedBox(height: NetriSpacing.space6),
+
+                const Text('Simulasi Pengujian Sistem Keamanan:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: NetriSpacing.space3),
+                Wrap(
+                  spacing: NetriSpacing.space2,
+                  runSpacing: NetriSpacing.space2,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.screenshot_rounded, size: 18),
+                      label: const Text('Simulasi Screenshot'),
+                      onPressed: () => LockdownService().recordScreenshotAttempt(),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                      label: const Text('Simulasi Switch App'),
+                      onPressed: () => LockdownService().handleAppResignedActive(),
+                    ),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: const Text('Simulasi Kirim Form'),
+                      onPressed: _completeExam,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
-    // Panel Simulator untuk Desktop & Web
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 600),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(NetriSpacing.space6),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(NetriSpacing.space4),
-                decoration: BoxDecoration(
-                  color: NetriColors.brandLight.withAlpha(20),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.lock_clock_rounded, size: 48, color: NetriColors.brandLight),
-              ),
-              const SizedBox(height: NetriSpacing.space4),
-              const Text(
-                'Exam NETRI Lintas Platform Aktif',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: NetriSpacing.space2),
-              Text(
-                'Di Android & iOS, Google Form tampil 100% fullscreen dengan proteksi anti-screenshot, anti-copy teks, dan penguncian tombol home.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade700, height: 1.4),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: NetriSpacing.space4),
-              Container(
-                padding: const EdgeInsets.all(NetriSpacing.space3),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withAlpha(20),
-                  borderRadius: BorderRadius.circular(NetriRadius.sm),
-                ),
-                child: SelectableText(
-                  widget.session.formUrl,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
-              ),
-              const SizedBox(height: NetriSpacing.space6),
+    return Stack(
+      children: [
+        content,
+        if (_isObscured || !_isPinned) _buildSecurityCurtain(),
+      ],
+    );
+  }
 
-              const Text('Simulasi Pengujian Sistem Keamanan:', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: NetriSpacing.space3),
-              Wrap(
-                spacing: NetriSpacing.space2,
-                runSpacing: NetriSpacing.space2,
-                alignment: WrapAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.screenshot_rounded, size: 18),
-                    label: const Text('Simulasi Screenshot'),
-                    onPressed: () => LockdownService().recordScreenshotAttempt(),
-                  ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.exit_to_app_rounded, size: 18),
-                    label: const Text('Simulasi Switch App'),
-                    onPressed: () => LockdownService().handleAppResignedActive(),
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.send_rounded, size: 18),
-                    label: const Text('Simulasi Kirim Form'),
-                    onPressed: _completeExam,
-                  ),
-                ],
+  /// Tirai pelindung penuh saat jendela mengambang (Floating App) terdeteksi atau Sematkan Layar belum aktif
+  Widget _buildSecurityCurtain() {
+    return Positioned.fill(
+      child: Material(
+        color: const Color(0xFF141824),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(NetriSpacing.space5),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(35),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.redAccent, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.phonelink_lock_rounded,
+                          color: Colors.redAccent,
+                          size: 44,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: NetriSpacing.space4),
+                    Text(
+                      _isObscured
+                          ? 'Aplikasi Mengambang (Floating App) Terdeteksi!'
+                          : 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: NetriSpacing.space3),
+                    Text(
+                      _isObscured
+                          ? 'Lembar soal disembunyikan karena terdeteksi jendela mengambang (seperti Chrome Floating Window) aktif di layar. Tekan tombol di bawah untuk mengunci layar dan menutup paksa seluruh aplikasi mengambang.'
+                          : 'Agar seluruh aplikasi mengambang (seperti Chrome) tertutup otomatis dan tidak dapat dibuka selama ujian, Anda wajib menekan "Sematkan / Oke" pada konfirmasi sistem Android.',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13.5,
+                        height: 1.45,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: NetriSpacing.space5),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: NetriColors.brandLight,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(NetriRadius.md),
+                        ),
+                      ),
+                      icon: const Icon(Icons.lock_rounded, size: 20),
+                      label: const Text(
+                        'Kunci Layar & Tutup Floating Apps',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () async {
+                        final pinned = await LockdownService().requestLockTask();
+                        final clear = await LockdownService().checkScreenClear();
+                        if (!mounted) return;
+                        setState(() {
+                          _isPinned = pinned;
+                          _isObscured = !clear;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: NetriSpacing.space2),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white30),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(NetriRadius.md),
+                        ),
+                      ),
+                      icon: const Icon(Icons.settings_rounded, size: 18),
+                      label: const Text('Buka Pengaturan Sematkan Layar'),
+                      onPressed: () {
+                        LockdownService().openSecuritySettings();
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),

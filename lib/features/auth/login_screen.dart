@@ -66,8 +66,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Memulai sesi ujian dalam mode ketat
-  void _startExam() {
+  /// Memulai sesi ujian dalam mode ketat setelah memvalidasi layar bersih dari floating apps
+  Future<void> _startExam() async {
     final rawUrl = _urlController.text.trim();
     if (rawUrl.isEmpty) {
       setState(() => _errorMessage = 'Harap tempel tautan form atau pindai QR Code ujian.');
@@ -80,10 +80,34 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Lapis 1: Tolak masuk ujian jika terdeteksi ada floating app (misal Chrome mengambang) atau split-screen aktif
+    final isClear = await LockdownService().checkScreenClear();
+    if (!mounted) return;
+    if (!isClear) {
+      setState(() {
+        _errorMessage =
+            'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
+            'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
+      });
+      return;
+    }
+
     setState(() => _errorMessage = null);
 
     _showConfirmationBottomSheet(
-      onConfirmed: () {
+      onConfirmed: () async {
+        // Periksa ulang kebersihan layar tepat sebelum mengunci sesi ujian
+        final stillClear = await LockdownService().checkScreenClear();
+        if (!mounted) return;
+        if (!stillClear) {
+          setState(() {
+            _errorMessage =
+                'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
+                'Harap tutup semua jendela mengambang terlebih dahulu sebelum memulai ujian.';
+          });
+          return;
+        }
+
         final now = DateTime.now();
         final session = ActiveExamSession(
           sessionId: 'ses_${now.millisecondsSinceEpoch}',
