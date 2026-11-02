@@ -238,7 +238,7 @@ void main() {
 
         // Dialog auto-submit muncul
         expect(find.text('Waktu Ujian Habis'), findsOneWidget);
-        expect(find.textContaining('mengirimkan (submit) jawaban Anda secara otomatis'), findsOneWidget);
+        expect(find.textContaining('mengirimkan jawaban Anda secara otomatis'), findsOneWidget);
 
         // Tunggu grace period 3.5 detik untuk network submission selesai
         await tester.pump(const Duration(milliseconds: 3600));

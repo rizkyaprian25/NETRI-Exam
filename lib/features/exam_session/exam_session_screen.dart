@@ -94,6 +94,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
           NavigationDelegate(
             onPageStarted: (String url) {
               setState(() => _isLoadingForm = true);
+              _checkIfFormSubmitted(url);
             },
             onPageFinished: (String url) {
               setState(() => _isLoadingForm = false);
@@ -210,71 +211,155 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     }
   }
 
-  /// Menekan tombol Kirim / Submit pada Google Form secara otomatis menggunakan skrip DOM
-  Future<void> _autoSubmitGoogleForm() async {
-    if (_webViewController == null) return;
+  /// Menekan tombol Kirim / Submit pada Google Form secara otomatis menggunakan skrip DOM komprehensif
+  Future<String?> _autoSubmitGoogleForm() async {
+    if (_webViewController == null) return null;
     const jsScript = '''
       (function() {
         try {
-          var buttons = document.querySelectorAll('div[role="button"], button, input[type="submit"]');
-          var submitBtn = null;
-          var nextBtn = null;
+          var logs = [];
 
-          // 1. Cari tombol Kirim atau Submit persis
-          for (var i = 0; i < buttons.length; i++) {
-            var btn = buttons[i];
-            var text = (btn.innerText || btn.textContent || btn.value || '').trim().toLowerCase();
-            if (text === 'kirim' || text === 'submit') {
-              submitBtn = btn;
-              break;
-            } else if (text === 'berikutnya' || text === 'next') {
-              nextBtn = btn;
+          // 1. Lengkapi isian wajib yang masih kosong dengan '-' agar tidak diblokir validasi client Google
+          var inputs = document.querySelectorAll('input[type="text"], input[type="email"], textarea, input:not([type])');
+          var filledCount = 0;
+          for (var i = 0; i < inputs.length; i++) {
+            var inp = inputs[i];
+            if (inp.offsetParent !== null && (!inp.value || inp.value.trim() === '')) {
+              inp.value = '-';
+              inp.dispatchEvent(new Event('input', { bubbles: true }));
+              inp.dispatchEvent(new Event('change', { bubbles: true }));
+              filledCount++;
             }
           }
+          logs.push('FILLED_' + filledCount);
 
-          // 2. Jika tidak ditemukan persis, cari tombol yang mengandung kata kirim / submit
+          // 2. Fungsi pembantu dispatch event klik nyata (pointerdown, mousedown, mouseup, click)
+          function triggerRealClick(el) {
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+            try { el.focus(); } catch (e) {}
+
+            var eventTypes = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+            for (var k = 0; k < eventTypes.length; k++) {
+              var evtName = eventTypes[k];
+              try {
+                var evt;
+                if (evtName.indexOf('pointer') !== -1 && typeof PointerEvent !== 'undefined') {
+                  evt = new PointerEvent(evtName, { bubbles: true, cancelable: true, view: window, pointerType: 'touch', isPrimary: true });
+                } else {
+                  evt = new MouseEvent(evtName, { bubbles: true, cancelable: true, view: window, button: 0, buttons: 1 });
+                }
+                el.dispatchEvent(evt);
+              } catch (err) {}
+            }
+            try { el.click(); } catch (e) {}
+          }
+
+          // 3. Cari tombol Kirim / Submit
+          var submitBtn = null;
+
+          // 3a. Berdasarkan jsname standar Google Forms
+          submitBtn = document.querySelector('div[jsname="M2CFlb"]') || document.querySelector('div[role="button"][jsname="M2CFlb"]');
+
+          // 3b. Berdasarkan teks di dalam elemen span
           if (!submitBtn) {
-            for (var j = 0; j < buttons.length; j++) {
-              var b = buttons[j];
-              var t = (b.innerText || b.textContent || b.value || '').trim().toLowerCase();
-              if ((t.indexOf('kirim') !== -1 || t.indexOf('submit') !== -1) &&
-                  t.indexOf('batal') === -1 && t.indexOf('kembali') === -1 && t.indexOf('back') === -1) {
-                submitBtn = b;
+            var spans = document.querySelectorAll('form span, div[role="button"] span, button span');
+            for (var s = 0; s < spans.length; s++) {
+              var spanTxt = (spans[s].innerText || spans[s].textContent || '').trim().toLowerCase();
+              if (spanTxt === 'kirim' || spanTxt === 'submit') {
+                submitBtn = spans[s].closest('div[role="button"]') || spans[s].closest('button') || spans[s];
                 break;
               }
             }
           }
 
-          // 3. Eksekusi klik otomatis pada tombol yang ditemukan
-          if (submitBtn) {
-            submitBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
-            submitBtn.click();
-            return 'SUBMIT_CLICKED';
-          } else if (nextBtn) {
-            nextBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
-            nextBtn.click();
-            return 'NEXT_CLICKED';
-          } else {
-            var form = document.querySelector('form');
-            if (form) {
-              form.submit();
-              return 'FORM_SUBMITTED';
+          // 3c. Berdasarkan div[role="button"] atau button umum
+          if (!submitBtn) {
+            var allButtons = document.querySelectorAll('div[role="button"], button, input[type="submit"]');
+            for (var b = 0; b < allButtons.length; b++) {
+              var btnTxt = (allButtons[b].innerText || allButtons[b].textContent || allButtons[b].value || '').trim().toLowerCase();
+              if (btnTxt === 'kirim' || btnTxt === 'submit' || (btnTxt.indexOf('kirim') !== -1 && btnTxt.indexOf('batal') === -1 && btnTxt.indexOf('kembali') === -1)) {
+                submitBtn = allButtons[b];
+                break;
+              }
             }
           }
-          return 'NO_BUTTON_FOUND';
-        } catch (e) {
-          return 'ERROR: ' + e;
+
+          if (submitBtn) {
+            triggerRealClick(submitBtn);
+            logs.push('CLICKED_SUBMIT');
+            return logs.join(';');
+          }
+
+          // 4. Jika ada tombol 'Berikutnya' / 'Next' (multi-halaman sebelum akhir)
+          var nextBtn = document.querySelector('div[jsname="OCpkoe"]') || document.querySelector('div[role="button"][jsname="OCpkoe"]');
+          if (!nextBtn) {
+            var nextSpans = document.querySelectorAll('form span, div[role="button"] span');
+            for (var ns = 0; ns < nextSpans.length; ns++) {
+              var nTxt = (nextSpans[ns].innerText || nextSpans[ns].textContent || '').trim().toLowerCase();
+              if (nTxt === 'berikutnya' || nTxt === 'next') {
+                nextBtn = nextSpans[ns].closest('div[role="button"]') || nextSpans[ns].closest('button') || nextSpans[ns];
+                break;
+              }
+            }
+          }
+          if (nextBtn) {
+            triggerRealClick(nextBtn);
+            logs.push('CLICKED_NEXT');
+            return logs.join(';');
+          }
+
+          // 5. Fallback langsung submit form HTML bawaan
+          var formEl = document.getElementById('mG61Hd') || document.querySelector('form');
+          if (formEl) {
+            HTMLFormElement.prototype.submit.call(formEl);
+            logs.push('CALLED_FORM_SUBMIT');
+            return logs.join(';');
+          }
+
+          logs.push('NO_BUTTON_OR_FORM');
+          return logs.join(';');
+        } catch (ex) {
+          return 'EXCEPTION:' + ex.message;
         }
       })();
     ''';
     try {
-      await _webViewController!.runJavaScript(jsScript);
+      final res = await _webViewController!.runJavaScriptReturningResult(jsScript);
+      debugPrint('[AutoSubmit] Respon eksekusi: $res');
+      return res.toString();
     } catch (e) {
-      debugPrint('[AutoSubmit] Gagal eksekusi JavaScript submit: $e');
+      debugPrint('[AutoSubmit] Error JavaScript: $e');
+      return null;
     }
   }
 
-  /// Penanganan otomatis saat durasi ujian habis (Otomatis Kirim / Submit Form)
+  /// Memaksa pengiriman HTTP POST form HTML secara langsung jika tombol Kirim belum memicu respon
+  Future<void> _forceDirectFormSubmit() async {
+    if (_webViewController == null) return;
+    const jsScript = '''
+      (function() {
+        try {
+          var formEl = document.getElementById('mG61Hd') || document.querySelector('form');
+          if (formEl) {
+            HTMLFormElement.prototype.submit.call(formEl);
+            return 'FORCE_SUBMIT_SUCCESS';
+          }
+          return 'NO_FORM_FOUND';
+        } catch (e) {
+          return 'FORCE_SUBMIT_ERR:' + e.message;
+        }
+      })();
+    ''';
+    try {
+      final res = await _webViewController!.runJavaScriptReturningResult(jsScript);
+      debugPrint('[AutoSubmit] Respon force direct submit: $res');
+    } catch (e) {
+      debugPrint('[AutoSubmit] Error force direct submit: $e');
+    }
+  }
+
+  /// Penanganan otomatis saat durasi ujian habis (Otomatis Kirim / Submit Form dengan Verifikasi Respon)
   Future<void> _onTimeExpired() async {
     if (_isAutoSubmitting || _isExamCompleted) return;
     _isAutoSubmitting = true;
@@ -303,22 +388,22 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Waktu pengerjaan telah berakhir. Sistem sedang mengirimkan (submit) jawaban Anda secara otomatis agar nilai tetap tersimpan.',
+            children: const [
+              Text(
+                'Waktu pengerjaan telah berakhir. Sistem sedang mengirimkan jawaban Anda secara otomatis agar nilai tetap tersimpan.',
                 style: TextStyle(fontSize: 13, height: 1.4),
               ),
-              const SizedBox(height: 16),
-              const Center(
+              SizedBox(height: 16),
+              Center(
                 child: SizedBox(
                   width: 32,
                   height: 32,
                   child: CircularProgressIndicator(strokeWidth: 3),
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Mengirimkan lembar jawaban ke server Google...',
+              SizedBox(height: 12),
+              Text(
+                'Mengirimkan jawaban ke server Google Forms...',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
@@ -328,14 +413,38 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       );
     }
 
-    // 1. Eksekusi auto-submit Google Form melalui JavaScript WebView
-    await _autoSubmitGoogleForm();
+    if (_webViewController != null) {
+      // 1. Jalankan auto-submit pertama (isi field kosong & klik tombol Kirim/Submit)
+      await _autoSubmitGoogleForm();
 
-    // 2. Berikan waktu tenggang (grace period) 3.5 detik agar payload jawaban terkirim via jaringan
-    await Future.delayed(const Duration(milliseconds: 3500));
+      // 2. Pantau URL WebView secara aktif hingga halaman 'formResponse' terdeteksi
+      // Berikan waktu hingga 8 detik (periksa setiap 500ms) agar pengunggahan data selesai
+      bool isConfirmed = false;
+      for (int i = 0; i < 16; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted || _isExamCompleted) return;
 
-    // 3. Tutup dialog dan selesaikan ujian menuju ResultScreen
-    if (mounted) {
+        final currentUrl = await _webViewController?.currentUrl();
+        if (currentUrl != null &&
+            (currentUrl.contains('formResponse') || currentUrl.contains('finish=1'))) {
+          isConfirmed = true;
+          break;
+        }
+
+        // Pada detik ke-2.5 (iterasi ke-5), jika belum berpindah URL, jalankan direct form submit
+        if (i == 5) {
+          await _forceDirectFormSubmit();
+        }
+      }
+
+      debugPrint('[AutoSubmit] Hasil konfirmasi penerimaan server: $isConfirmed');
+    } else {
+      // Waktu jeda simulasi pada lingkungan desktop / unit-test
+      await Future.delayed(const Duration(seconds: 2));
+    }
+
+    // 3. Selesaikan ujian dan arahkan ke ResultScreen
+    if (mounted && !_isExamCompleted) {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
