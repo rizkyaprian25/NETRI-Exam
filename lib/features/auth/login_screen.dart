@@ -323,10 +323,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text(
-                                    '2. Durasi Ujian',
-                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                  Expanded(
+                                    child: Text(
+                                      '2. Durasi Ujian',
+                                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
@@ -346,8 +350,27 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Pilih estimasi waktu pengerjaan soal ujian:',
+                                'Ketik durasi custom (menit) atau pilih preset cepat:',
                                 style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color),
+                              ),
+                              const SizedBox(height: NetriSpacing.space2),
+
+                              // Kotak Input Durasi Custom
+                              TextField(
+                                controller: _durationController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Atur Durasi Ujian (Menit Bebas)',
+                                  hintText: 'Misal: 15, 30, 45, 75, 90...',
+                                  prefixIcon: Icon(Icons.timer_outlined),
+                                  suffixText: 'Menit',
+                                ),
+                                onChanged: (val) {
+                                  final mins = int.tryParse(val.trim());
+                                  if (mins != null && mins > 0) {
+                                    setState(() => _selectedDurationMinutes = mins);
+                                  }
+                                },
                               ),
                               const SizedBox(height: NetriSpacing.space2),
 

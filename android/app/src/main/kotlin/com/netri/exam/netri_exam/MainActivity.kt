@@ -45,6 +45,7 @@ class MainActivity : FlutterActivity() {
                 enforceMaxBrightness()
                 enforceMaxVolume()
                 collapseStatusBar()
+                applyImmersiveMode()
                 mainHandler.postDelayed(this, 500)
             }
         }

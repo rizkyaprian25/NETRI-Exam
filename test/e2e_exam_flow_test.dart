@@ -70,7 +70,7 @@ void main() {
         );
 
         // 3. Validasi Input: Uji saat tautan bukan Google Form
-        final urlField = find.byType(TextField);
+        final urlField = find.byType(TextField).first;
         await tester.enterText(urlField, 'https://youtube.com/video');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
@@ -80,22 +80,21 @@ void main() {
           findsOneWidget,
         );
 
-        // 4. Pilih Durasi Ujian Cepat (misal 45 Menit)
-        final chip45 = find.widgetWithText(ChoiceChip, '45 Mnt');
-        expect(chip45, findsOneWidget);
-        await tester.tap(chip45);
+        // 4. Uji Pengaturan Durasi Custom (Ketik bebas, misal 75 Menit)
+        final durationField = find.byType(TextField).last;
+        await tester.enterText(durationField, '75');
         await tester.pumpAndSettle();
 
-        expect(find.text('45 Menit'), findsOneWidget);
+        expect(find.text('75 Menit'), findsOneWidget);
 
         // 5. Masukkan Tautan Google Form yang Sah
         await tester.enterText(urlField, 'https://forms.gle/sampleExamNetri123');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
-        // 6. Verifikasi Modal Konfirmasi Bottom Sheet
+        // 6. Verifikasi Modal Konfirmasi Bottom Sheet dengan Durasi Custom
         expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
-        expect(find.textContaining('Durasi: 45 Menit'), findsOneWidget);
+        expect(find.textContaining('Durasi: 75 Menit'), findsOneWidget);
         expect(find.textContaining('Mencoba keluar akan membunyikan sirine'), findsOneWidget);
 
         // 7. Mulai Ujian Secara Resmi

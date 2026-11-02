@@ -127,18 +127,43 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     }
   }
 
-  /// Menyuntikkan skrip anti-copy, anti-seleksi, dan nonaktifkan menu konteks (Khas Exam NETRI)
+  /// Menyuntikkan skrip anti-copy teks soal tanpa mengganggu pengetikan jawaban formulir
   void _injectAntiCopyProtection() {
     if (_webViewController == null) return;
     const jsScript = '''
       (function() {
-        document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('selectstart', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('copy', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('cut', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('paste', function(e) { e.preventDefault(); return false; });
+        // Blokir menu konteks selain pada kotak isian
+        document.addEventListener('contextmenu', function(e) {
+          var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+          if (tag !== 'input' && tag !== 'textarea') {
+            e.preventDefault();
+            return false;
+          }
+        });
+        // Blokir penyalinan teks soal (copy)
+        document.addEventListener('copy', function(e) {
+          e.preventDefault();
+          return false;
+        });
+        // Blokir cut selain pada kotak isian
+        document.addEventListener('cut', function(e) {
+          var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+          if (tag !== 'input' && tag !== 'textarea') {
+            e.preventDefault();
+            return false;
+          }
+        });
+        // Izinkan peletakan kursor dan seleksi teks khusus pada input & textarea agar bisa mengetik
+        document.addEventListener('selectstart', function(e) {
+          var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+          if (tag !== 'input' && tag !== 'textarea') {
+            e.preventDefault();
+            return false;
+          }
+        });
+        // Proteksi CSS: Soal tidak bisa disorot, namun input dan textarea 100% aktif untuk mengetik
         var style = document.createElement('style');
-        style.innerHTML = '* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }';
+        style.innerHTML = 'body { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; } input, textarea, [contenteditable="true"] { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }';
         document.head.appendChild(style);
       })();
     ''';
