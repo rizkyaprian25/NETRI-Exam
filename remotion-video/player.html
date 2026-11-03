@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NETRI Exam - Studio Pemutar Video Demo Otomatis (Full HD 1080p)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background-color: #030712;
+      color: #F9FAFB;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 16px;
+    }
+
+    /* Container Pemutar Rasio 16:9 */
+    .video-viewport {
+      width: 100%;
+      max-width: 1200px;
+      aspect-ratio: 16 / 9;
+      background: radial-gradient(circle at 50% 40%, #1E293B 0%, #0B0F19 100%);
+      border-radius: 20px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 50px rgba(37, 99, 235, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Canvas Efek Visual Latar Belakang */
+    #fxCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Panggung Adegan Utama */
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 40px 60px 100px 60px;
+      z-index: 10;
+    }
+
+    /* Sisi Kiri: Teks Narasi & Branding */
+    .left-panel {
+      flex: 1;
+      max-width: 55%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      z-index: 20;
+    }
+
+    .school-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(37, 99, 235, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      padding: 6px 16px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #60A5FA;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .scene-title {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.2;
+      color: #FFFFFF;
+      margin-bottom: 14px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    .scene-desc {
+      font-size: 17px;
+      line-height: 1.5;
+      color: #94A3B8;
+      margin-bottom: 24px;
+      max-width: 520px;
+    }
+
+    .pills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .pill-item {
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pill-blue {
+      background: rgba(37, 99, 235, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93C5FD;
+    }
+    .pill-red {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #FCA5A5;
+    }
+    .pill-green {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #6EE7B7;
+    }
+
+    /* Sisi Kanan: Mockup Smartphone */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 20;
+    }
+
+    .phone-wrapper {
+      width: 270px;
+      height: 560px;
+      background: #0F172A;
+      border-radius: 42px;
+      padding: 10px;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.9), 0 0 35px rgba(37, 99, 235, 0.3);
+      border: 3px solid #334155;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease, border-color 0.4s ease;
+    }
+
+    .phone-wrapper.alert-mode {
+      border-color: #EF4444;
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.8), 0 25px 50px rgba(0,0,0,0.9);
+      animation: phoneShake 0.4s ease-in-out infinite alternate;
+    }
+
+    @keyframes phoneShake {
+      0% { transform: rotate(-1deg) scale(1.02); }
+      100% { transform: rotate(1deg) scale(1.02); }
+    }
+
+    /* Dynamic Island */
+    .phone-island {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 18px;
+      background: #000000;
+      border-radius: 12px;
+      z-index: 50;
+    }
+
+    .phone-screen {
+      flex: 1;
+      background: #FFFFFF;
+      border-radius: 34px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Subtitle Bar di Bawah Layar */
+    .subtitle-bar {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 960px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.6);
+      z-index: 40;
+    }
+
+    .step-tag {
+      background: #2563EB;
+      color: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .subtitle-text {
+      color: #F8FAFC;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    /* Bar Kontrol Pemutar di Bagian Bawah Browser */
+    .controls-bar {
+      margin-top: 16px;
+      width: 100%;
+      max-width: 1200px;
+      background: #0F172A;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .btn-control {
+      background: #2563EB;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-control:hover {
+      background: #1D4ED8;
+    }
+
+    .btn-record {
+      background: #DC2626;
+    }
+    .btn-record:hover {
+      background: #B91C1C;
+    }
+    .btn-record.recording {
+      animation: recordPulse 1s infinite alternate;
+    }
+    @keyframes recordPulse {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0.7; transform: scale(1.05); }
+    }
+
+    .timeline-slider {
+      flex: 1;
+      accent-color: #3B82F6;
+      height: 6px;
+      cursor: pointer;
+    }
+
+    .time-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94A3B8;
+      min-width: 90px;
+      text-align: right;
+    }
+
+    .scene-selector {
+      background: #1E293B;
+      color: #F8FAFC;
+      border: 1px solid #334155;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    /* Elemen Internal Layar Phone Mockup */
+    .screen-header {
+      background: #1E40AF;
+      color: white;
+      padding: 24px 12px 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .floating-chrome-window {
+      position: absolute;
+      top: 50px;
+      right: 10px;
+      width: 140px;
+      height: 160px;
+      background: #FFFFFF;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      border: 2px solid #3B82F6;
+      display: flex;
+      flex-direction: column;
+      z-index: 60;
+      overflow: hidden;
+      animation: floatHop 2s ease-in-out infinite alternate;
+    }
+    @keyframes floatHop {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-8px); }
+    }
+
+    .security-curtain-view {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #141824;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      text-align: center;
+      z-index: 70;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Judul Atas -->
+  <div style="width: 100%; max-width: 1200px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 28px;">🎬</span>
+      <div>
+        <h2 style="font-size: 20px; font-weight: 800; color: #FFFFFF;">NETRI Exam - Studio Video Walkthrough Otomatis</h2>
+        <p style="font-size: 12px; color: #94A3B8;">SMP Negeri 3 Cibungbulang • Full HD 1080p • 7 Babak Alur Terverifikasi</p>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="display: inline-block; width: 10px; height: 10px; background: #22C55E; border-radius: 50%;"></span>
+      <span style="font-size: 13px; font-weight: 600; color: #86EFAC;">Remotion + Video Demo Engine Ready</span>
+    </div>
+  </div>
+
+  <!-- Viewport Video 16:9 -->
+  <div class="video-viewport" id="videoViewport">
+    <canvas id="fxCanvas"></canvas>
+
+    <div class="stage">
+      <!-- Panel Narasi Kiri -->
+      <div class="left-panel">
+        <div class="school-badge" id="badgeText">BABAK 1 • HOOK & MASALAH</div>
+        <h1 class="scene-title" id="sceneTitle">Ujian Digital Bebas Celah di Smartphone Siswa</h1>
+        <p class="scene-desc" id="sceneDesc">Mengunci browser, menutup celah aplikasi mengambang, mematikan tombol curang, dan membunyikan alarm sirine seketika.</p>
+        <div class="pills-row" id="pillsContainer">
+          <div class="pill-item pill-red">🚫 Anti Browsing & Chat</div>
+          <div class="pill-item pill-blue">🔒 100% Kiosk Terkunci</div>
+        </div>
+      </div>
+
+      <!-- Mockup Smartphone Kanan -->
+      <div class="right-panel">
+        <div class="phone-wrapper" id="phoneMockup">
+          <div class="phone-island"></div>
+          <div class="phone-screen" id="phoneScreen">
+            <!-- Konten Layar HP akan dirender secara dinamis oleh JavaScript -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Subtitle Bar -->
+    <div class="subtitle-bar">
+      <div class="step-tag" id="subStepTag">BABAK 1</div>
+      <div class="subtitle-text" id="subText">Melaksanakan ujian menggunakan smartphone siswa sering kali memicu kekhawatiran: membuka contekan, browsing jawaban, hingga aplikasi mengambang. Kini hadir NETRI Exam!</div>
+    </div>
+  </div>
+
+  <!-- Baris Kontrol Interaktif -->
+  <div class="controls-bar">
+    <button class="btn-control" id="btnPlayPause">▶ Putar Video</button>
+    <button class="btn-control" id="btnRestart">↺ Ulangi</button>
+    <button class="btn-control btn-record" id="btnRecord">🔴 Rekam Video HD (.webm)</button>
+
+    <input type="range" class="timeline-slider" id="timeSlider" min="0" max="110" step="0.1" value="0">
+    <div class="time-label" id="timeLabel">00:00 / 01:50</div>
+
+    <select class="scene-selector" id="sceneSelect">
+      <option value="0">Babak 1: Hook & Masalah (00:00)</option>
+      <option value="15">Babak 2: Scan QR & Input Soal (00:15)</option>
+      <option value="30">Babak 3: Konfirmasi Kiosk Guru (00:30)</option>
+      <option value="43">Babak 4: Anti Floating Chrome (00:43)</option>
+      <option value="63">Babak 5: Fullscreen & Anti-Copy (01:03)</option>
+      <option value="80">Babak 6: Sirine 5 Detik & Back (01:20)</option>
+      <option value="98">Babak 7: Selesai Sah & Penutup (01:38)</option>
+    </select>
+  </div>
+
+  <script>
+    // State Mesin Video
+    let currentTime = 0;
+    const totalDuration = 110; // 110 detik (1 menit 50 detik)
+    let isPlaying = false;
+    let animFrameId = null;
+    let lastTimestamp = 0;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    // Web Audio Synthesizer (Sirine 5s, Scan Beep, Click, Success Chime)
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      return audioCtx;
+    }
+
+    // Suara Sirine Alarm Nyata (Frekuensi termodulasi 800Hz - 1200Hz)
+    let sirenOsc = null;
+    let sirenGain = null;
+    function startSirenSound() {
+      try {
+        const ctx = getAudioContext();
+        if (sirenOsc) return;
+        sirenOsc = ctx.createOscillator();
+        sirenGain = ctx.createGain();
+        sirenOsc.type = 'sawtooth';
+        sirenGain.gain.setValueAtTime(0.15, ctx.currentTime);
+
+        // Modulasi naik turun frekuensi sirine
+        const now = ctx.currentTime;
+        sirenOsc.frequency.setValueAtTime(800, now);
+        for (let i = 0; i < 10; i++) {
+          sirenOsc.frequency.linearRampToValueAtTime(1200, now + (i * 0.5) + 0.25);
+          sirenOsc.frequency.linearRampToValueAtTime(800, now + (i * 0.5) + 0.5);
+        }
+        sirenOsc.connect(sirenGain);
+        sirenGain.connect(ctx.destination);
+        sirenOsc.start();
+      } catch (e) {}
+    }
+
+    function stopSirenSound() {
+      if (sirenOsc) {
+        try {
+          sirenOsc.stop();
+          sirenOsc.disconnect();
+        } catch (_) {}
+        sirenOsc = null;
+      }
+    }
+
+    // Suara Beep Scan QR
+    function playBeepSound() {
+      try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      } catch (_) {}
+    }
+
+    // Suara Chord Lonceng Sukses
+    function playSuccessChime() {
+      try {
+        const ctx = getAudioContext();
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + (idx * 0.08));
+          gain.gain.setValueAtTime(0.15, ctx.currentTime + (idx * 0.08));
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + (idx * 0.08));
+          osc.stop(ctx.currentTime + 1.2);
+        });
+      } catch (_) {}
+    }
+
+    // Definisi Data 7 Babak
+    const scenes = [
+      {
+        start: 0,
+        end: 15,
+        badge: "Babak 1 • Tantangan",
+        title: "Ujian Digital Bebas Celah di Smartphone Siswa",
+        desc: "Mengunci browser, menutup celah aplikasi mengambang, mematikan tombol curang, dan membunyikan alarm sirine seketika.",
+        pills: [
+          { text: "🚫 Anti Browsing & Chat", class: "pill-red" },
+          { text: "🔒 100% Kiosk Terkunci", class: "pill-blue" }
+        ],
+        subStep: "BABAK 1",
+        subtitle: "Melaksanakan ujian menggunakan smartphone siswa sering kali memicu kekhawatiran: membuka contekan, browsing jawaban, hingga aplikasi mengambang. Kini hadir NETRI Exam!",
+        renderPhone: (t) => `
+          <div style="flex:1; background:#F1F5F9; padding:20px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+            <div style="background:white; border-radius:14px; padding:12px; width:100%; box-shadow:0 8px 16px rgba(0,0,0,0.1); border:1px solid #CBD5E1; margin-bottom:14px;">
+              <div style="font-size:11px; font-weight:700; color:#15803D; margin-bottom:4px;">💬 WhatsApp Kelas</div>
+              <div style="font-size:10px; color:#334155;">"Nomor 15 jawabannya A atau C?"</div>
+            </div>
+            <div style="background:#FEE2E2; border:2px solid #EF4444; border-radius:14px; padding:14px; text-align:center;">
+              <div style="font-size:24px;">⚠️</div>
+              <div style="font-size:11px; font-weight:800; color:#B91C1C; margin-top:4px;">BAHAYA KECURANGAN!</div>
+              <div style="font-size:9px; color:#7F1D1D; margin-top:2px;">Tanpa penguncian Kiosk, siswa bebas membuka aplikasi lain & contekan.</div>
+            </div>
+          </div>
+        `
+      },
+      {
+        start: 15,
+        end: 30,
+        badge: "Babak 2 • Masuk Soal",
+        title: "Input Soal Instan & Terverifikasi",
+        desc: "Siswa cukup memindai QR Code di kartu ujian dalam satu detik, atau menempelkan link Google Forms sekolah.",
+        pills: [
+          { text: "📷 Scan QR Kamera Cepat", class: "pill-green" },
+          { text: "🛡️ Whitelist Domain Google", class: "pill-blue" }
+        ],
+        subStep: "BABAK 2",
+        subtitle: "Siswa cukup memindai QR Code soal dari pengawas hanya dalam 1 detik, atau menempelkan tautan Google Forms. Sistem otomatis memvalidasi tautan resmi sekolah.",
+        renderPhone: (t) => {
+          const isScanning = (t >= 18 && t <= 24);
+          if (isScanning && Math.floor(t * 10) % 25 === 0) playBeepSound();
+          return `
+            <div style="flex:1; background:#FFFFFF; padding:16px; display:flex; flex-direction:column; position:relative;">
+              <div style="text-align:center; margin-top:10px; margin-bottom:14px;">
+                <div style="display:inline-block; background:#EFF6FF; border:1px solid #BFDBFE; padding:3px 10px; border-radius:20px; font-size:9px; font-weight:700; color:#1D4ED8;">
+                  🛡️ Aplikasi Ujian Aman (Anti-Curang)
+                </div>
+              </div>
+              <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:11px; font-weight:700; color:#0F172A;">Tautan Formulir Ujian</div>
+                <div style="background:#FFF; border:1px solid #CBD5E1; border-radius:8px; padding:6px 8px; font-size:10px; color:${t > 24 ? '#0F172A' : '#94A3B8'};">
+                  ${t > 24 ? 'https://forms.gle/UjianMatematikaSMPN3' : 'Pindai QR Code atau tempel link...'}
+                </div>
+                <div style="border:1px solid #2563EB; border-radius:8px; padding:8px 0; text-align:center; color:#2563EB; font-weight:700; font-size:10px; background:${isScanning ? '#EFF6FF' : '#FFF'};">
+                  📷 Scan QR Code Soal
+                </div>
+                <div style="background:#2563EB; color:white; border-radius:8px; padding:9px 0; text-align:center; font-weight:700; font-size:11px;">
+                  Mulai Ujian ▶
+                </div>
+              </div>
+              ${isScanning ? `
+                <div style="position:absolute; top:0; left:0; right:0; bottom:0; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:30;">
+                  <div style="width:130px; height:130px; border:2px solid #3B82F6; border-radius:14px; position:relative; overflow:hidden;">
+                    <div style="position:absolute; left:0; right:0; top:${((t - 18) * 40) % 130}px; height:2px; background:#EF4444; box-shadow:0 0 8px #EF4444;"></div>
+                  </div>
+                  <div style="color:white; font-size:9px; margin-top:10px;">Arahkan kamera ke QR Soal</div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+      },
+      {
+        start: 30,
+        end: 43,
+        badge: "Babak 3 • Aturan Ujian",
+        title: "Pengawasan Fleksibel Tanpa Timer Panik",
+        desc: "Batas waktu otomatis ditiadakan demi kenyamanan siswa — pengawasan dan peringatan waktu sepenuhnya dilakukan oleh guru di kelas.",
+        pills: [
+          { text: "💡 Layar & Suara 100%", class: "pill-blue" },
+          { text: "👨‍🏫 Kontrol Humanis Pengawas", class: "pill-green" }
+        ],
+        subStep: "BABAK 3",
+        subtitle: "Batas waktu otomatis ditiadakan demi kenyamanan siswa — pengawasan dan peringatan waktu dilakukan sepenuhnya secara manual oleh bapak/ibu guru pengawas di dalam kelas.",
+        renderPhone: (t) => `
+          <div style="flex:1; background:#CBD5E1; display:flex; flex-direction:column; position:relative;">
+            <div style="position:absolute; inset:0; background:rgba(0,0,0,0.4);"></div>
+            <div style="margin-top:auto; background:white; border-radius:20px 20px 0 0; padding:16px 14px; display:flex; flex-direction:column; gap:10px; z-index:10; box-shadow:0 -8px 20px rgba(0,0,0,0.2);">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:28px; height:28px; border-radius:50%; background:#EFF6FF; display:flex; align-items:center; justify-content:center; color:#2563EB; font-size:14px;">🛡️</div>
+                <div>
+                  <div style="font-size:12px; font-weight:800; color:#0F172A;">Mode Ujian Ketat</div>
+                  <div style="font-size:9px; color:#2563EB; font-weight:700;">Pengawasan Guru • Layar 100% • Suara 100%</div>
+                </div>
+              </div>
+              <div style="background:#F8FAFC; border-radius:10px; padding:8px; font-size:9px; color:#334155; line-height:1.4;">
+                • Kecerahan & volume otomatis 100%<br>
+                • Dilarang membuka aplikasi lain<br>
+                • Mencoba keluar = Sirine 5 detik!
+              </div>
+              <div style="background:#2563EB; color:white; padding:8px 0; border-radius:8px; text-align:center; font-weight:700; font-size:11px;">
+                Saya Siap & Mulai Mengerjakan
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        start: 43,
+        end: 63,
+        badge: "Babak 4 • Anti Floating",
+        title: "Anti Floating Apps & Tirai Pelindung",
+        desc: "Siswa mencoba trik membuka Chrome mengambang? Tirai Pelindung otomatis menutupi lembar soal dan menutup paksa semua floating apps.",
+        pills: [
+          { text: "🛑 Tirai Pelindung Hitam", class: "pill-red" },
+          { text: "⚡ Lock Task Mematikan Floating", class: "pill-blue" }
+        ],
+        subStep: "BABAK 4",
+        subtitle: "Bagaimana jika siswa mencoba membuka Chrome floating window? Sistem pertahanan berlapis NETRI Exam otomatis menutup soal dengan Tirai Pelindung dan menutup paksa semua aplikasi mengambang.",
+        renderPhone: (t) => {
+          const hasFloatingChrome = t < 55;
+          const hasCurtain = t >= 47 && t < 57;
+          return `
+            <div style="flex:1; background:#F8FAFC; display:flex; flex-direction:column; position:relative;">
+              <div style="flex:1; padding:12px; opacity:${hasCurtain ? 0.15 : 1};">
+                <div style="font-size:10px; font-weight:700; color:#1E40AF; margin-bottom:8px;">ASESMEN MATEMATIKA KELAS 8</div>
+                <div style="background:white; border-radius:10px; padding:10px; border:1px solid #E2E8F0;">
+                  <div style="font-size:10px; font-weight:600; color:#1E293B; margin-bottom:6px;">1. Nilai 3x + 5 = 20 adalah...</div>
+                  <div style="font-size:9px; color:#64748B;">○ A. 5</div>
+                  <div style="font-size:9px; color:#64748B;">○ B. 10</div>
+                </div>
+              </div>
+
+              ${hasFloatingChrome ? `
+                <div class="floating-chrome-window">
+                  <div style="background:#E2E8F0; padding:4px 6px; display:flex; align-items:center; justify-content:space-between; font-size:8px; font-weight:700;">
+                    <span>🌐 Chrome (Floating)</span>
+                    <span style="color:#EF4444;">✕</span>
+                  </div>
+                  <div style="padding:6px; font-size:8px; color:#475569;">
+                    <div style="border:1px solid #CBD5E1; border-radius:8px; padding:2px 4px; margin-bottom:4px;">🔍 Kunci jawaban...</div>
+                    <div style="font-size:7px; color:#94A3B8;">Pencarian jawaban matematika...</div>
+                  </div>
+                </div>
+              ` : ''}
+
+              ${hasCurtain ? `
+                <div class="security-curtain-view">
+                  <div style="width:46px; height:46px; border-radius:50%; background:rgba(239,68,68,0.2); border:2px solid #EF4444; display:flex; align-items:center; justify-content:center; font-size:20px; margin-bottom:10px;">🔒</div>
+                  <div style="font-size:11px; font-weight:800; color:white; margin-bottom:6px;">Floating App Terdeteksi!</div>
+                  <div style="font-size:8px; color:rgba(255,255,255,0.7); margin-bottom:12px; line-height:1.4;">Lembar soal ditutup demi keamanan. Tekan tombol untuk menutup paksa Chrome.</div>
+                  <div style="background:#2563EB; color:white; padding:7px 12px; border-radius:8px; font-size:9px; font-weight:700;">
+                    🛡️ Kunci Layar & Tutup Floating
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+      },
+      {
+        start: 63,
+        end: 80,
+        badge: "Babak 5 • Proteksi Soal",
+        title: "100% Layar Penuh & Bebas Salin Teks",
+        desc: "Teks soal terlindungi anti-copy JavaScript sehingga tidak dapat disalin atau dicari di AI, sementara kolom isian tetap lancar untuk menjawab.",
+        pills: [
+          { text: "🔒 Anti-Copy Soal Teks", class: "pill-blue" },
+          { text: "✏️ Input Jawaban 100% Lancar", class: "pill-green" },
+          { text: "🚫 Tanpa Tombol Selesai di Bar", class: "pill-red" }
+        ],
+        subStep: "BABAK 5",
+        subtitle: "Siswa mengerjakan soal Google Form dengan nyaman dalam mode layar penuh. Teks soal dilindungi anti-copy sehingga tidak dapat disalin atau dibagikan, sementara kolom isian tetap 100% responsif.",
+        renderPhone: (t) => `
+          <div style="flex:1; background:#EDE7F6; display:flex; flex-direction:column;">
+            <div class="screen-header">
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span>🔒</span>
+                <span>Exam NETRI (Terkunci)</span>
+              </div>
+              <div style="background:rgba(255,255,255,0.2); padding:2px 6px; border-radius:10px; font-size:9px;">● Terhubung</div>
+            </div>
+            <div style="flex:1; padding:10px; overflow-y:auto;">
+              <div style="background:white; border-radius:8px; padding:10px; border-top:4px solid #673AB7; margin-bottom:8px;">
+                <div style="font-size:11px; font-weight:800; color:#202124;">Asesmen Matematika Kelas 8</div>
+                <div style="font-size:8px; color:#5F6368;">SMP Negeri 3 Cibungbulang</div>
+              </div>
+              <div style="background:white; border-radius:8px; padding:10px; margin-bottom:8px;">
+                <div style="font-size:10px; font-weight:600; color:#202124; margin-bottom:6px;">1. Bentuk sederhana 4(2x - 3) + 5:</div>
+                <div style="display:flex; align-items:center; gap:6px; background:#EDE7F6; padding:4px 6px; border-radius:4px; font-size:9px; font-weight:700;">
+                  <span>🔘</span>
+                  <span>A. 8x - 7</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; padding:4px 6px; font-size:9px; color:#555;">
+                  <span>⚪</span>
+                  <span>B. 8x + 7</span>
+                </div>
+              </div>
+              <div style="background:white; border-radius:8px; padding:10px;">
+                <div style="font-size:10px; font-weight:600; color:#202124; margin-bottom:4px;">2. Esai singkat:</div>
+                <div style="border-bottom:2px solid #673AB7; font-size:9px; padding:2px 0; color:#202124;">
+                  ${t > 70 ? 'Hasil akhir adalah 5' : 'Ketik jawaban...'}
+                </div>
+              </div>
+            </div>
+          </div>
+        `
+      },
+      {
+        start: 80,
+        end: 98,
+        badge: "Babak 6 • Sensor Pelanggaran",
+        title: "Sirine Peringatan 5 Detik Saat Coba Keluar",
+        desc: "Mencoba menekan tombol Back atau meminimalkan aplikasi? Volume suara otomatis 100% dan sirine keras meraung selama 5 detik di kelas!",
+        pills: [
+          { text: "🚨 Sirine Nyata 5 Detik Meraung", class: "pill-red" },
+          { text: "📋 Log Pelanggaran ke Server", class: "pill-blue" }
+        ],
+        subStep: "BABAK 6",
+        subtitle: "Mencoba menekan tombol kembali atau berpindah aplikasi? Sistem langsung membunyikan sirine peringatan keras selama 5 detik dan mengunci layar, memberikan efek jera seketika di ruang ujian.",
+        renderPhone: (t) => {
+          if (t >= 82 && t <= 87) {
+            startSirenSound();
+          } else {
+            stopSirenSound();
+          }
+          return `
+            <div style="flex:1; background:#EDE7F6; display:flex; flex-direction:column; position:relative;">
+              <div style="flex:1; padding:10px; opacity:0.25;">
+                <div style="background:white; border-radius:8px; padding:12px; border-top:4px solid #673AB7;">
+                  <div style="font-size:11px; font-weight:800;">Asesmen Matematika Kelas 8</div>
+                </div>
+              </div>
+              <div style="position:absolute; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; padding:14px; z-index:40;">
+                <div style="background:white; border:2px solid #EF4444; border-radius:18px; padding:14px; text-align:center; width:100%; box-shadow:0 15px 30px rgba(239,68,68,0.4);">
+                  <div style="width:44px; height:44px; border-radius:50%; background:#FEE2E2; border:2px solid #F87171; display:flex; align-items:center; justify-content:center; margin:0 auto 8px auto; font-size:20px;">🚨</div>
+                  <div style="font-size:12px; font-weight:800; color:#B91C1C; margin-bottom:6px;">DILARANG KELUAR!</div>
+                  <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:6px; color:#DC2626; font-size:9px; font-weight:700; margin-bottom:8px;">
+                    🔊 Sirine peringatan aktif 5 detik!
+                  </div>
+                  <div style="font-size:8px; color:#475569; margin-bottom:12px; line-height:1.4;">Tombol kembali dinonaktifkan demi integritas ujian sekolah.</div>
+                  <div style="background:#1E40AF; color:white; padding:7px 0; border-radius:8px; font-size:9px; font-weight:700;">
+                    Lanjut Mengerjakan Ujian
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      },
+      {
+        start: 98,
+        end: 110,
+        badge: "Babak 7 • Selesai Sah",
+        title: "Pengiriman Sah Tanpa Celah Curang",
+        desc: "Satu-satunya jalan keluar adalah menekan tombol Kirim pada Google Form. Status penguncian dilepas otomatis dengan verifikasi integritas penuh.",
+        pills: [
+          { text: "✅ Terdeteksi formResponse", class: "pill-green" },
+          { text: "🏫 Siap Dipakai di SMPN 3", class: "pill-blue" }
+        ],
+        subStep: "BABAK 7",
+        subtitle: "Satu-satunya cara menyelesaikan ujian adalah dengan mengirimkan formulir jawaban secara sah. Bersama NETRI Exam, mari ciptakan asesmen digital yang jujur dan berintegritas!",
+        renderPhone: (t) => {
+          stopSirenSound();
+          if (t >= 99 && t < 100) playSuccessChime();
+          return `
+            <div style="flex:1; background:white; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:16px; text-align:center;">
+              <div style="width:60px; height:60px; border-radius:50%; background:#DCFCE7; border:3px solid #22C55E; display:flex; align-items:center; justify-content:center; font-size:28px; margin-bottom:12px; box-shadow:0 8px 20px rgba(34,197,94,0.3);">
+                ✅
+              </div>
+              <div style="background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D; font-size:9px; font-weight:700; padding:2px 10px; border-radius:14px; margin-bottom:8px;">
+                Terkunci & Sah
+              </div>
+              <div style="font-size:14px; font-weight:800; color:#0F172A; margin-bottom:4px;">
+                Sesi Ujian Selesai!
+              </div>
+              <div style="font-size:8px; color:#64748B; margin-bottom:16px; line-height:1.4;">
+                Jawaban Anda telah berhasil dikirim ke server sekolah. Seluruh sistem penguncian telah dinonaktifkan.
+              </div>
+              <div style="background:#2563EB; color:white; padding:8px 0; border-radius:8px; width:100%; font-size:10px; font-weight:700;">
+                Kembali ke Beranda
+              </div>
+            </div>
+          `;
+        }
+      }
+    ];
+
+    // Elemen DOM
+    const badgeText = document.getElementById('badgeText');
+    const sceneTitle = document.getElementById('sceneTitle');
+    const sceneDesc = document.getElementById('sceneDesc');
+    const pillsContainer = document.getElementById('pillsContainer');
+    const phoneScreen = document.getElementById('phoneScreen');
+    const phoneMockup = document.getElementById('phoneMockup');
+    const subStepTag = document.getElementById('subStepTag');
+    const subText = document.getElementById('subText');
+    const timeSlider = document.getElementById('timeSlider');
+    const timeLabel = document.getElementById('timeLabel');
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const btnRestart = document.getElementById('btnRestart');
+    const btnRecord = document.getElementById('btnRecord');
+    const sceneSelect = document.getElementById('sceneSelect');
+    const videoViewport = document.getElementById('videoViewport');
+
+    // Canvas Background Particles
+    const fxCanvas = document.getElementById('fxCanvas');
+    const ctx = fxCanvas.getContext('2d');
+    function resizeCanvas() {
+      fxCanvas.width = videoViewport.clientWidth;
+      fxCanvas.height = videoViewport.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    const particles = Array.from({ length: 40 }, () => ({
+      x: Math.random() * fxCanvas.width,
+      y: Math.random() * fxCanvas.height,
+      radius: Math.random() * 2 + 1,
+      speedX: (Math.random() - 0.5) * 0.4,
+      speedY: (Math.random() - 0.5) * 0.4,
+      alpha: Math.random() * 0.5 + 0.2
+    }));
+
+    function drawParticles() {
+      ctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+      ctx.fillStyle = '#60A5FA';
+      particles.forEach(p => {
+        p.x += p.speedX;
+        p.y += p.speedY;
+        if (p.x < 0) p.x = fxCanvas.width;
+        if (p.x > fxCanvas.width) p.x = 0;
+        if (p.y < 0) p.y = fxCanvas.height;
+        if (p.y > fxCanvas.height) p.y = 0;
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Pembaruan Frame Adegan
+    function updateFrame(time) {
+      currentTime = Math.max(0, Math.min(totalDuration, time));
+      timeSlider.value = currentTime;
+
+      const mins = Math.floor(currentTime / 60).toString().padStart(2, '0');
+      const secs = Math.floor(currentTime % 60).toString().padStart(2, '0');
+      timeLabel.textContent = `${mins}:${secs} / 01:50`;
+
+      // Cari scene aktif
+      const currentScene = scenes.find(s => currentTime >= s.start && currentTime < s.end) || scenes[scenes.length - 1];
+
+      badgeText.textContent = currentScene.badge;
+      sceneTitle.textContent = currentScene.title;
+      sceneDesc.textContent = currentScene.desc;
+      subStepTag.textContent = currentScene.subStep;
+      subText.textContent = currentScene.subtitle;
+
+      // Update pills
+      pillsContainer.innerHTML = currentScene.pills.map(p => `
+        <div class="pill-item ${p.class}">${p.text}</div>
+      `).join('');
+
+      // Update Phone Screen & Efek
+      phoneScreen.innerHTML = currentScene.renderPhone(currentTime);
+
+      if (currentScene.badge.includes('Sirine') || currentScene.badge.includes('Anti Floating')) {
+        phoneMockup.classList.add('alert-mode');
+      } else {
+        phoneMockup.classList.remove('alert-mode');
+      }
+
+      drawParticles();
+    }
+
+    // Loop Animasi
+    function animationLoop(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+
+      if (isPlaying) {
+        currentTime += delta;
+        if (currentTime >= totalDuration) {
+          currentTime = totalDuration;
+          isPlaying = false;
+          btnPlayPause.textContent = '▶ Putar Video';
+          stopSirenSound();
+        }
+        updateFrame(currentTime);
+      }
+
+      animFrameId = requestAnimationFrame(animationLoop);
+    }
+
+    // Event Kontrol
+    btnPlayPause.addEventListener('click', () => {
+      getAudioContext();
+      isPlaying = !isPlaying;
+      btnPlayPause.textContent = isPlaying ? '⏸ Jeda' : '▶ Putar Video';
+      if (!isPlaying) stopSirenSound();
+    });
+
+    btnRestart.addEventListener('click', () => {
+      currentTime = 0;
+      isPlaying = true;
+      btnPlayPause.textContent = '⏸ Jeda';
+      stopSirenSound();
+      updateFrame(0);
+    });
+
+    timeSlider.addEventListener('input', (e) => {
+      updateFrame(parseFloat(e.target.value));
+    });
+
+    sceneSelect.addEventListener('change', (e) => {
+      currentTime = parseFloat(e.target.value);
+      updateFrame(currentTime);
+    });
+
+    // Perekam Video Canvas & Audio (MediaRecorder API)
+    btnRecord.addEventListener('click', async () => {
+      if (isRecording) {
+        mediaRecorder.stop();
+        return;
+      }
+
+      try {
+        const stream = videoViewport.captureStream ? videoViewport.captureStream(30) : fxCanvas.captureStream(30);
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = 'NETRI_Exam_Demo_Walkthrough.webm';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+
+          isRecording = false;
+          btnRecord.textContent = '🔴 Rekam Video HD (.webm)';
+          btnRecord.classList.remove('recording');
+          alert('Video demo NETRI Exam berhasil direkam dan diunduh ke komputer Anda!');
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        btnRecord.textContent = '⏹ Selesai & Simpan Video';
+        btnRecord.classList.add('recording');
+
+        // Otomatis putar dari awal saat merekam
+        currentTime = 0;
+        isPlaying = true;
+        btnPlayPause.textContent = '⏸ Jeda';
+        updateFrame(0);
+      } catch (err) {
+        alert('Fitur perekam browser memerlukan izin display capture: ' + err.message);
+      }
+    });
+
+    // Inisialisasi awal
+    updateFrame(0);
+    animFrameId = requestAnimationFrame(animationLoop);
+  </script>
+</body>
+</html>
