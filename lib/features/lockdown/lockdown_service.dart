@@ -28,7 +28,7 @@ class LockdownService {
   // Callback ke antarmuka ujian (untuk menampilkan dialog strike / lock / tirai pelindung)
   void Function(int strikeCount, String reason)? onStrikeTriggered;
   void Function()? onLockRequired;
-  void Function(bool isPinned, bool isObscured)? onLockStateChanged;
+  void Function(bool isPinned, bool isObscured, bool isGestureMode)? onLockStateChanged;
 
   Future<void> _handleNativeCall(MethodCall call) async {
     if (!_isLockdownActive) return;
@@ -49,12 +49,13 @@ class LockdownService {
         await recordOverlayDetected(reason: reason);
         break;
       case 'onLockStateChanged':
-        // Pembaruan status Sematkan Layar (Lock Task) dan status tertutup floating window
+        // Pembaruan status Sematkan Layar (Lock Task), tertutup floating window, dan mode gerakan (Gesture)
         final args = call.arguments;
         if (args is Map) {
           final isPinned = args['isPinned'] == true;
           final isObscured = args['isObscured'] == true;
-          onLockStateChanged?.call(isPinned, isObscured);
+          final isGestureMode = args['isGestureMode'] == true;
+          onLockStateChanged?.call(isPinned, isObscured, isGestureMode);
         }
         break;
       default:
@@ -102,6 +103,44 @@ class LockdownService {
   Future<void> openSecuritySettings() async {
     try {
       await _channel.invokeMethod('openSecuritySettings');
+    } catch (_) {}
+  }
+
+  /// Memeriksa apakah HP siswa menggunakan Mode Tombol (3-Button Navigation) dan BUKAN Mode Gerakan (Gesture)
+  Future<bool> isThreeButtonNavigation() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('isThreeButtonNavigation');
+      return result ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Membuka pengaturan Sistem / Layar HP agar siswa dapat mengganti Mode Gerakan ke Mode 3 Tombol
+  Future<void> openNavigationSettings() async {
+    try {
+      await _channel.invokeMethod('openNavigationSettings');
+    } catch (_) {}
+  }
+
+  /// Memeriksa apakah izin "Tampilkan di atas aplikasi lain" (Overlay) sudah diaktifkan
+  Future<bool> hasOverlayPermission() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('hasOverlayPermission');
+      return result ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Meminta izin "Tampilkan di atas aplikasi lain" agar aplikasi bisa menarik paksa layar jika keluar via gesture
+  Future<void> requestOverlayPermission() async {
+    try {
+      await _channel.invokeMethod('requestOverlayPermission');
     } catch (_) {}
   }
 

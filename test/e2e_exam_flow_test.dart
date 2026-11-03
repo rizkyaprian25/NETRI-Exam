@@ -319,5 +319,70 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'Skenario Blokir Mode Gerakan (Gesture Navigation): Tolak Masuk Saat Mode Gerakan Aktif & Izinkan Setelah Ubah ke Mode 3 Tombol',
+      (WidgetTester tester) async {
+        bool mockIsThreeButton = false;
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.netri.exam/lockdown'),
+          (MethodCall methodCall) async {
+            channelCallLog.add(methodCall.method);
+            if (methodCall.method == 'isThreeButtonNavigation') {
+              return mockIsThreeButton;
+            }
+            if (methodCall.method == 'openNavigationSettings') {
+              // Simulasikan siswa mengubah dari Mode Gerakan ke Mode 3 Tombol di Pengaturan HP
+              mockIsThreeButton = true;
+              return true;
+            }
+            return true;
+          },
+        );
+
+        await tester.pumpWidget(const NetriExamApp());
+        await tester.pumpAndSettle();
+
+        final urlField = find.byType(TextField).first;
+        await tester.enterText(urlField, 'https://forms.gle/gestureTest123');
+
+        // 1. Coba mulai ujian saat HP menggunakan Mode Gerakan (mockIsThreeButton = false)
+        final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        // Pastikan ditolak dan muncul modal peringatan Mode Gerakan Dilarang
+        expect(find.text('Mode Gerakan (Gesture) Dilarang!'), findsOneWidget);
+        expect(find.byType(ExamSessionScreen), findsNothing);
+
+        // 2. Siswa menekan tombol 'Buka Pengaturan Navigasi HP' untuk mengubah ke Mode 3 Tombol
+        final openNavSettingsButton = find.widgetWithText(
+          ElevatedButton,
+          'Buka Pengaturan Navigasi HP',
+        );
+        expect(openNavSettingsButton, findsOneWidget);
+        await tester.tap(openNavSettingsButton);
+        await tester.pumpAndSettle();
+
+        expect(channelCallLog, contains('openNavigationSettings'));
+
+        // 3. Setelah kembali dengan Mode 3 Tombol aktif (mockIsThreeButton = true), mulai ujian berhasil
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        final confirmStartButton = find.widgetWithText(
+          ElevatedButton,
+          'Saya Siap & Mulai Mengerjakan',
+        );
+        expect(confirmStartButton, findsOneWidget);
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
+      },
+    );
   });
 }

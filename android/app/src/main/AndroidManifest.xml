@@ -10,6 +10,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Izin Keamanan Sembunyikan Jendela Overlay (Android 12+) -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
+    <!-- Izin Tampil di Atas Aplikasi Lain & Foreground Service untuk Menarik Paksa Layar Saat Keluar via Gesture -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     
     <application
         android:label="Exam NETRI"
@@ -47,6 +51,15 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+        <!-- Service Pengawal Latar Belakang untuk menarik kembali siswa jika keluar via gerakan (Gesture) -->
+        <service
+            android:name=".ExamGuardService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="exam_kiosk_lockdown_guard" />
+        </service>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

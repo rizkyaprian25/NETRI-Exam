@@ -33,6 +33,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   bool _isExamCompleted = false;
   bool _isPinned = true;
   bool _isObscured = false;
+  bool _isGestureMode = false;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -58,16 +59,17 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
-    // Pantau perubahan status Sematkan Layar (Lock Task) dan jendela mengambang (Floating Apps)
-    lockdown.onLockStateChanged = (bool isPinned, bool isObscured) {
+    // Pantau perubahan status Sematkan Layar (Lock Task), jendela mengambang, dan Mode Gerakan (Gesture)
+    lockdown.onLockStateChanged = (bool isPinned, bool isObscured, bool isGestureMode) {
       if (!mounted) return;
       setState(() {
         _isPinned = isPinned;
         _isObscured = isObscured;
+        _isGestureMode = isGestureMode;
       });
     };
 
-    // Verifikasi awal status Sematkan Layar dan kebersihan layar
+    // Verifikasi awal status Sematkan Layar, Mode 3 Tombol, dan kebersihan layar
     lockdown.isLockTaskActive().then((pinned) {
       if (!mounted) return;
       setState(() => _isPinned = pinned);
@@ -75,6 +77,10 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     lockdown.checkScreenClear().then((clear) {
       if (!mounted) return;
       setState(() => _isObscured = !clear);
+    });
+    lockdown.isThreeButtonNavigation().then((threeButton) {
+      if (!mounted) return;
+      setState(() => _isGestureMode = !threeButton);
     });
 
     lockdown.onLockRequired = () {
@@ -429,13 +435,33 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     return Stack(
       children: [
         content,
-        if (_isObscured || !_isPinned) _buildSecurityCurtain(),
+        if (_isGestureMode || _isObscured || !_isPinned) _buildSecurityCurtain(),
       ],
     );
   }
 
-  /// Tirai pelindung penuh saat jendela mengambang (Floating App) terdeteksi atau Sematkan Layar belum aktif
+  /// Tirai pelindung penuh saat Mode Gerakan aktif, Floating App terdeteksi, atau Sematkan Layar terlepas
   Widget _buildSecurityCurtain() {
+    final String titleText;
+    final String bodyText;
+
+    if (_isGestureMode) {
+      titleText = 'Mode Gerakan (Gesture) Terdeteksi!';
+      bodyText =
+          'Lembar soal disembunyikan karena HP menggunakan Navigasi Mode Gerakan (Gesture). '
+          'Wajib ubah ke Mode Navigasi 3 Tombol di Pengaturan HP agar layar ujian terkunci penuh dan tidak bisa keluar.';
+    } else if (_isObscured) {
+      titleText = 'Aplikasi Mengambang (Floating App) Terdeteksi!';
+      bodyText =
+          'Lembar soal disembunyikan karena terdeteksi jendela mengambang (seperti Chrome Floating Window) aktif di layar. '
+          'Tekan tombol di bawah untuk mengunci layar dan menutup paksa seluruh aplikasi mengambang.';
+    } else {
+      titleText = 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!';
+      bodyText =
+          'Agar layar ujian terkunci rapat dan seluruh aplikasi mengambang tertutup otomatis selama ujian, '
+          'Anda wajib menekan "Sematkan / Oke" pada konfirmasi sistem Android.';
+    }
+
     return Positioned.fill(
       child: Material(
         color: const Color(0xFF141824),
@@ -457,8 +483,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.redAccent, width: 2),
                         ),
-                        child: const Icon(
-                          Icons.phonelink_lock_rounded,
+                        child: Icon(
+                          _isGestureMode ? Icons.swipe_rounded : Icons.phonelink_lock_rounded,
                           color: Colors.redAccent,
                           size: 44,
                         ),
@@ -466,9 +492,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     ),
                     const SizedBox(height: NetriSpacing.space4),
                     Text(
-                      _isObscured
-                          ? 'Aplikasi Mengambang (Floating App) Terdeteksi!'
-                          : 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!',
+                      titleText,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 19,
@@ -478,9 +502,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     ),
                     const SizedBox(height: NetriSpacing.space3),
                     Text(
-                      _isObscured
-                          ? 'Lembar soal disembunyikan karena terdeteksi jendela mengambang (seperti Chrome Floating Window) aktif di layar. Tekan tombol di bawah untuk mengunci layar dan menutup paksa seluruh aplikasi mengambang.'
-                          : 'Agar seluruh aplikasi mengambang (seperti Chrome) tertutup otomatis dan tidak dapat dibuka selama ujian, Anda wajib menekan "Sematkan / Oke" pada konfirmasi sistem Android.',
+                      bodyText,
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13.5,
@@ -489,9 +511,33 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: NetriSpacing.space5),
+                    if (_isGestureMode) ...[
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: NetriColors.brandLight,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(NetriRadius.md),
+                          ),
+                        ),
+                        icon: const Icon(Icons.settings_rounded, size: 20),
+                        label: const Text(
+                          'Buka Pengaturan Navigasi HP (Pilih 3 Tombol)',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () async {
+                          await LockdownService().openNavigationSettings();
+                          final threeButton = await LockdownService().isThreeButtonNavigation();
+                          if (!mounted) return;
+                          setState(() => _isGestureMode = !threeButton);
+                        },
+                      ),
+                      const SizedBox(height: NetriSpacing.space2),
+                    ],
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: NetriColors.brandLight,
+                        backgroundColor: _isGestureMode ? Colors.white24 : NetriColors.brandLight,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -504,10 +550,12 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
+                        final threeButton = await LockdownService().isThreeButtonNavigation();
                         final pinned = await LockdownService().requestLockTask();
                         final clear = await LockdownService().checkScreenClear();
                         if (!mounted) return;
                         setState(() {
+                          _isGestureMode = !threeButton;
                           _isPinned = pinned;
                           _isObscured = !clear;
                         });
