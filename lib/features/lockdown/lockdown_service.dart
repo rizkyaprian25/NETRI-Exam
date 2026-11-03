@@ -29,8 +29,26 @@ class LockdownService {
   void Function(int strikeCount, String reason)? onStrikeTriggered;
   void Function()? onLockRequired;
   void Function(bool isPinned, bool isObscured, bool isThreeButton)? onLockStateChanged;
+  void Function(bool isScreenClear)? onPreExamScreenClearChanged;
 
   Future<void> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'onLockStateChanged') {
+      // Pembaruan status Sematkan Layar (Lock Task), kebersihan layar pra-ujian, dan Mode 3 Tombol
+      final args = call.arguments;
+      if (args is Map) {
+        if (args.containsKey('isScreenClear')) {
+          onPreExamScreenClearChanged?.call(args['isScreenClear'] == true);
+        }
+        if (_isLockdownActive) {
+          final isPinned = args['isPinned'] == true;
+          final isObscured = args['isObscured'] == true;
+          final isThreeButton = args['isThreeButton'] == true;
+          onLockStateChanged?.call(isPinned, isObscured, isThreeButton);
+        }
+      }
+      return;
+    }
+
     if (!_isLockdownActive) return;
 
     switch (call.method) {
@@ -48,31 +66,28 @@ class LockdownService {
         final reason = args is Map ? args['reason']?.toString() : null;
         await recordOverlayDetected(reason: reason);
         break;
-      case 'onLockStateChanged':
-        // Pembaruan status Sematkan Layar (Lock Task), tertutup floating window, dan Mode 3 Tombol
-        final args = call.arguments;
-        if (args is Map) {
-          final isPinned = args['isPinned'] == true;
-          final isObscured = args['isObscured'] == true;
-          final isThreeButton = args['isThreeButton'] == true;
-          onLockStateChanged?.call(isPinned, isObscured, isThreeButton);
-        }
-        break;
       default:
         break;
     }
   }
 
-  /// Memeriksa apakah layar bersih dari floating apps / split-screen sebelum ujian dimulai
+  /// Memeriksa apakah layar bersih dari floating apps / split-screen sebelum ujian dimulai (Fail-Closed di Android)
   Future<bool> checkScreenClear() async {
     try {
       final result = await _channel.invokeMethod<bool>('checkScreenClear');
-      return result ?? true;
+      return result ?? false;
     } on MissingPluginException {
       return true;
     } catch (_) {
-      return true;
+      return false;
     }
+  }
+
+  /// Melepas sematan layar jika terdeteksi aplikasi mengambang sesaat setelah penyematan
+  Future<void> unpinScreen() async {
+    try {
+      await _channel.invokeMethod('unpinScreen');
+    } catch (_) {}
   }
 
   /// Memeriksa apakah aplikasi sudah terkunci dalam mode Lock Task (Screen Pinning / Kiosk)

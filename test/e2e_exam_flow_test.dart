@@ -240,9 +240,10 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Anti Floating Apps: Tolak Masuk Saat Memasukkan Link & Saat Mulai Ujian Jika Masih Ada Floating App',
+      'Skenario Anti Floating Apps 4 Gerbang: Tolak Saat Input Link, Klik Mulai, Lembar Konfirmasi, & Pasca-Sematkan (TOCTOU)',
       (WidgetTester tester) async {
         bool mockScreenClear = false;
+        bool failAfterPin = false;
 
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
@@ -252,6 +253,12 @@ void main() {
             if (methodCall.method == 'checkScreenClear') {
               return mockScreenClear;
             }
+            if (methodCall.method == 'requestLockTask') {
+              if (failAfterPin) {
+                mockScreenClear = false;
+              }
+              return true;
+            }
             return true;
           },
         );
@@ -259,18 +266,17 @@ void main() {
         await tester.pumpWidget(const NetriExamApp());
         await tester.pumpAndSettle();
 
-        // 1. Saat memasukkan link form di login ketika ada floating app aktif (mockScreenClear = false)
+        // Gerbang 1: Saat memasukkan link form di login ketika ada floating app aktif (mockScreenClear = false)
         final urlField = find.byType(TextField).first;
         await tester.enterText(urlField, 'https://forms.gle/floatingTest123');
         await tester.pumpAndSettle();
 
-        // Peringatan deteksi floating app muncul saat input link
         expect(
           find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
           findsOneWidget,
         );
 
-        // 2. Coba klik mulai ujian saat floating app masih ada: Ujian DITOLAK
+        // Gerbang 2: Coba klik Mulai Ujian saat floating app masih ada -> DITOLAK
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
@@ -281,19 +287,48 @@ void main() {
         );
         expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 3. Setelah floating app ditutup (mockScreenClear = true)
+        // Gerbang 3: Floating app ditutup sementara saat klik Mulai Ujian, namun dibuka lagi saat lembar konfirmasi tampil
         mockScreenClear = true;
-        await tester.tap(urlField);
-        await tester.pumpAndSettle();
-
-        // Tekan Mulai Ujian: Berhasil masuk ke konfirmasi dan lembar ujian
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
+        mockScreenClear = false; // Siswa memunculkan floating app saat lembar konfirmasi tampil
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
           'Saya Siap & Mulai Mengerjakan',
         );
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
+          findsOneWidget,
+        );
+        expect(find.byType(ExamSessionScreen), findsNothing);
+
+        // Gerbang 4: Floating app muncul tepat saat dialog sematkan layar selesai (TOCTOU) -> unpinScreen & blokir
+        mockScreenClear = true;
+        failAfterPin = true;
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        expect(channelCallLog, contains('unpinScreen'));
+        expect(
+          find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
+          findsOneWidget,
+        );
+        expect(find.byType(ExamSessionScreen), findsNothing);
+
+        // 5. Setelah floating app benar-benar ditutup di seluruh gerbang (mockScreenClear = true, failAfterPin = false)
+        failAfterPin = false;
+        mockScreenClear = true;
+        await tester.tap(urlField);
+        await tester.pumpAndSettle();
+
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 

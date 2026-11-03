@@ -15,34 +15,43 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final TextEditingController _urlController = TextEditingController();
   String? _errorMessage;
+
+  static const String _floatingAppErrorMessage =
+      'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
+      'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Pastikan status penguncian dan suara alarm selalu nonaktif di layar login
     LockdownService().disableLockdown();
+    LockdownService().onPreExamScreenClearChanged = _applyScreenClearState;
     _urlController.addListener(_onUrlChanged);
     _checkFloatingAppStatus();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed || state == AppLifecycleState.inactive) {
+      _checkFloatingAppStatus();
+    }
+  }
+
   void _onUrlChanged() {
-    // Deteksi aplikasi mengambang saat siswa memasukkan atau menempel tautan formulir
+    // Gerbang 1: Deteksi aplikasi mengambang saat siswa memasukkan atau menempel tautan formulir
     _checkFloatingAppStatus();
   }
 
-  /// Memeriksa apakah ada aplikasi mengambang (Floating Apps) yang aktif di layar sebelum ujian dimulai
-  Future<void> _checkFloatingAppStatus() async {
-    final isClear = await LockdownService().checkScreenClear();
+  void _applyScreenClearState(bool isClear) {
     if (!mounted) return;
     if (!isClear) {
       if (_errorMessage == null || !_errorMessage!.contains('aplikasi mengambang')) {
         setState(() {
-          _errorMessage =
-              'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
-              'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
+          _errorMessage = _floatingAppErrorMessage;
         });
       }
     } else if (_errorMessage != null && _errorMessage!.contains('aplikasi mengambang')) {
@@ -52,8 +61,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Memeriksa apakah ada aplikasi mengambang (Floating Apps) yang aktif di layar sebelum ujian dimulai
+  Future<void> _checkFloatingAppStatus() async {
+    final isClear = await LockdownService().checkScreenClear();
+    _applyScreenClearState(isClear);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (LockdownService().onPreExamScreenClearChanged == _applyScreenClearState) {
+      LockdownService().onPreExamScreenClearChanged = null;
+    }
     _urlController.removeListener(_onUrlChanged);
     _urlController.dispose();
     super.dispose();
@@ -61,6 +80,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Buka Pemindai QR Code kamera untuk mengisi tautan ujian secara instan
   Future<void> _scanQrCode() async {
+    final isClear = await LockdownService().checkScreenClear();
+    if (!mounted) return;
+    if (!isClear) {
+      setState(() => _errorMessage = _floatingAppErrorMessage);
+      return;
+    }
+
     setState(() => _errorMessage = null);
     try {
       final scannedUrl = await Navigator.of(context).push<String>(
@@ -112,14 +138,12 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Lapis 1: Tolak masuk ujian jika terdeteksi ada floating app (misal Chrome mengambang) atau split-screen aktif
+    // Gerbang 2: Tolak klik Mulai Ujian jika terdeteksi ada floating app (misal Chrome mengambang) atau split-screen aktif
     final isClear = await LockdownService().checkScreenClear();
     if (!mounted) return;
     if (!isClear) {
       setState(() {
-        _errorMessage =
-            'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
-            'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
+        _errorMessage = _floatingAppErrorMessage;
       });
       return;
     }
@@ -130,18 +154,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     _showConfirmationBottomSheet(
       onConfirmed: () async {
+        // Gerbang 3: Verifikasi kebersihan layar tepat saat menekan "Saya Siap & Mulai Mengerjakan" sebelum sematkan layar
         final stillClear = await LockdownService().checkScreenClear();
         if (!mounted) return;
         if (!stillClear) {
           setState(() {
-            _errorMessage =
-                'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
-                'Harap tutup semua jendela mengambang terlebih dahulu sebelum memulai ujian.';
+            _errorMessage = _floatingAppErrorMessage;
           });
           return;
         }
 
-        // Lapis 2: Wajib sematkan aplikasi sebelum mulai ujian
+        // Wajib sematkan aplikasi sebelum mulai ujian
         await LockdownService().requestLockTask();
         final isPinned = await LockdownService().isLockTaskActive();
         if (!mounted) return;
@@ -153,6 +176,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 'Harap pilih "Sematkan / Aktifkan" pada konfirmasi sistem Android.';
           });
           _showPinRequiredDialog(formUrl: rawUrl);
+          return;
+        }
+
+        // Gerbang 4: Verifikasi ulang kebersihan layar SETELAH sematkan layar aktif (menutup celah TOCTOU)
+        final clearAfterPin = await LockdownService().checkScreenClear();
+        if (!mounted) return;
+        if (!clearAfterPin) {
+          await LockdownService().unpinScreen();
+          if (!mounted) return;
+          setState(() {
+            _errorMessage = _floatingAppErrorMessage;
+          });
           return;
         }
 
@@ -224,10 +259,29 @@ class _LoginScreenState extends State<LoginScreen> {
             label: const Text('Sematkan Sekarang'),
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
+              final clearBeforePin = await LockdownService().checkScreenClear();
+              if (!mounted) return;
+              if (!clearBeforePin) {
+                setState(() {
+                  _errorMessage = _floatingAppErrorMessage;
+                });
+                return;
+              }
+
               await LockdownService().requestLockTask();
               final isPinned = await LockdownService().isLockTaskActive();
               if (!mounted) return;
               if (isPinned) {
+                final clearAfterPin = await LockdownService().checkScreenClear();
+                if (!mounted) return;
+                if (!clearAfterPin) {
+                  await LockdownService().unpinScreen();
+                  if (!mounted) return;
+                  setState(() {
+                    _errorMessage = _floatingAppErrorMessage;
+                  });
+                  return;
+                }
                 _proceedToExam(formUrl);
               } else {
                 setState(() {

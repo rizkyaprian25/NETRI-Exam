@@ -38,10 +38,12 @@ class MainActivity : FlutterActivity() {
 
     // Status sematkan layar (Lock Task), status fokus, deteksi floating apps, dan mode navigasi
     private var wasPinnedOnce = false
+    private var isActivityResumed = false
     private var isTopResumed = true
     private var isWindowObscured = false
     private var lastReportedPinned: Boolean? = null
     private var lastReportedThreeButton: Boolean? = null
+    private var lastReportedScreenClear: Boolean? = null
 
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var originalMusicVolume: Int = -1
@@ -57,10 +59,18 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         isLockdownActive = false
+        isActivityResumed = true
+        isTopResumed = true
+        isWindowObscured = false
         lockdownStartTime = 0L
         lastPinRequestTime = 0L
         wasPinnedOnce = false
         stopAlarmSound()
+
+        // Pantau perubahan daftar jendela dari layanan aksesibilitas bila aktif
+        NetriWindowGuardService.onWindowHierarchyChanged = {
+            notifyFlutterStateIfChanged()
+        }
     }
 
     // Loop pengawas berkala (setiap 1000ms) untuk mengunci kecerahan 100%, volume 100%, dan memantau status Lock Task
@@ -122,6 +132,14 @@ class MainActivity : FlutterActivity() {
                     requestScreenPinning()
                     result.success(isInLockTaskMode())
                 }
+                "unpinScreen" -> {
+                    try {
+                        if (isInLockTaskMode()) {
+                            stopLockTask()
+                        }
+                    } catch (e: Exception) {}
+                    result.success(true)
+                }
                 "openSecuritySettings" -> {
                     openSecuritySettingsForPinning()
                     result.success(true)
@@ -144,10 +162,37 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Memeriksa apakah layar bersih dari floating apps, split-screen, dan kehilangan fokus
+    // Memeriksa apakah layar bersih dari floating apps, freeform window, PiP, split-screen, dan kehilangan fokus
     private fun isScreenClear(): Boolean {
         val multiWindow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
-        return !isWindowObscured && hasWindowFocus() && isTopResumed && !multiWindow
+        val pipMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInPictureInPictureMode else false
+        val windowGuardFloating = NetriWindowGuardService.hasVisibleFloatingWindow(this)
+        val freeformShrunk = isActivityWidthShrunk()
+
+        if (isWindowObscured || multiWindow || pipMode || windowGuardFloating || freeformShrunk) {
+            return false
+        }
+
+        // Abaikan kehilangan fokus sesaat hanya ketika dialog sistem Sematkan Layar sedang muncul
+        if (isInPinDialogGracePeriod()) {
+            return true
+        }
+
+        return hasWindowFocus() && isTopResumed
+    }
+
+    // Mendeteksi jika jendela aplikasi kita sendiri diperkecil menjadi mode mengambang (freeform)
+    private fun isActivityWidthShrunk(): Boolean {
+        return try {
+            val decor = window?.decorView ?: return false
+            val w = decor.width
+            if (w <= 0) return false
+            val screenW = resources.displayMetrics.widthPixels
+            if (screenW <= 0) return false
+            w < (screenW * 88 / 100)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // Memeriksa apakah aplikasi berada dalam Lock Task Mode (Pinned)
@@ -244,13 +289,18 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
-    // Mengirim status pinned dan mode tombol ke Flutter
+    // Mengirim status pinned, kebersihan layar pra-ujian, dan mode tombol ke Flutter
     private fun notifyFlutterStateIfChanged() {
         val pinned = isInLockTaskMode()
         val threeButton = isThreeButtonNavigation()
-        if (pinned != lastReportedPinned || threeButton != lastReportedThreeButton) {
+        val screenClear = isScreenClear()
+        if (pinned != lastReportedPinned ||
+            threeButton != lastReportedThreeButton ||
+            screenClear != lastReportedScreenClear
+        ) {
             lastReportedPinned = pinned
             lastReportedThreeButton = threeButton
+            lastReportedScreenClear = screenClear
             runOnUiThread {
                 try {
                     methodChannel?.invokeMethod(
@@ -258,7 +308,8 @@ class MainActivity : FlutterActivity() {
                         mapOf(
                             "isPinned" to pinned,
                             "isObscured" to false,
-                            "isThreeButton" to threeButton
+                            "isThreeButton" to threeButton,
+                            "isScreenClear" to screenClear
                         )
                     )
                 } catch (e: Exception) {}
@@ -649,11 +700,38 @@ class MainActivity : FlutterActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
-    // Deteksi sentuhan terhalang jendela mengambang (floating apps) pada layar beranda / pra-ujian
+    // Deteksi sentuhan terhalang jendela mengambang (floating apps / pop-up view / PiP / bubble)
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (!isLockdownActive && ev != null) {
-            val obscured = (ev.flags and MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0
-            isWindowObscured = obscured
+        if (ev != null) {
+            val flags = ev.flags
+            val partiallyObscured = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                (flags and MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED) != 0
+            } else {
+                false
+            }
+            val fullyObscured = (flags and MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0
+            val obscuredNow = fullyObscured || partiallyObscured
+
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    // Pada awal sentuhan baru, InputDispatcher Android memverifikasi apakah ada jendela aplikasi lain di atas jendela kita
+                    if (obscuredNow != isWindowObscured) {
+                        isWindowObscured = obscuredNow
+                        notifyFlutterStateIfChanged()
+                    } else {
+                        isWindowObscured = obscuredNow
+                    }
+                }
+                MotionEvent.ACTION_MOVE,
+                MotionEvent.ACTION_UP -> {
+                    // Jika di tengah interaksi muncul jendela mengambang, langsung kunci status tertutup
+                    if (obscuredNow && !isWindowObscured) {
+                        isWindowObscured = true
+                        notifyFlutterStateIfChanged()
+                    }
+                }
+            }
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -661,9 +739,7 @@ class MainActivity : FlutterActivity() {
     // Deteksi jika jendela kehilangan fokus (misal floating app menyala atau siswa menyentuh notifikasi)
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && !isLockdownActive) {
-            isWindowObscured = false
-        }
+        // Jangan mereset isWindowObscured = false saat hasFocus == true agar status floating app tidak hilang saat pindah fokus / tempel teks
         if (isLockdownActive) {
             if (!hasFocus) {
                 if (!isInPinDialogGracePeriod()) {
@@ -681,10 +757,14 @@ class MainActivity : FlutterActivity() {
         notifyFlutterStateIfChanged()
     }
 
-    // Deteksi perubahan status Top Resumed pada Android 10+ (misal siswa mengetuk floating app Chrome/WA)
+    // Deteksi perubahan status Top Resumed pada Android 10+ (Multi-Resume saat Floating App Chrome/WA tampil di atas aplikasi)
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
         super.onTopResumedActivityChanged(isTopResumedActivity)
         isTopResumed = isTopResumedActivity
+        if (!isTopResumedActivity && isActivityResumed && !isInPinDialogGracePeriod()) {
+            // Activity kita masih RESUMED tetapi bukan lagi Top Resumed -> ada jendela mengambang (Multi-Resume) aktif di atas layar!
+            isWindowObscured = true
+        }
         if (isLockdownActive && !isTopResumedActivity) {
             if (!isInStartupGracePeriod() && !isInPinDialogGracePeriod()) {
                 startAlarmSound(15000L)
@@ -696,6 +776,9 @@ class MainActivity : FlutterActivity() {
     // Deteksi multi-window / split-screen
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        if (isInMultiWindowMode) {
+            isWindowObscured = true
+        }
         if (isLockdownActive && isInMultiWindowMode) {
             startAlarmSound(15000L)
         }
@@ -713,16 +796,25 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        isActivityResumed = true
+        notifyFlutterStateIfChanged()
+    }
+
     override fun onPause() {
         super.onPause()
+        isActivityResumed = false
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
                 startAlarmSound(15000L)
             }
         }
+        notifyFlutterStateIfChanged()
     }
 
     override fun onDestroy() {
+        NetriWindowGuardService.onWindowHierarchyChanged = null
         mainHandler.removeCallbacks(lockdownEnforcerRunnable)
         stopAlarmSound()
         super.onDestroy()
