@@ -32,7 +32,6 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   bool _isLockDialogShowing = false;
   bool _isExamCompleted = false;
   bool _isPinned = true;
-  bool _isObscured = false;
   bool _isThreeButtonMode = true;
 
   bool get _isNativeMobilePlatform =>
@@ -59,7 +58,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
-    // Verifikasi awal status Sematkan Layar, Mode Tombol, dan kebersihan layar
+    // Verifikasi awal status Sematkan Layar dan Mode Tombol
     lockdown.isLockTaskActive().then((pinned) {
       if (!mounted) return;
       setState(() => _isPinned = pinned);
@@ -68,17 +67,12 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       if (!mounted) return;
       setState(() => _isThreeButtonMode = threeButton);
     });
-    lockdown.checkScreenClear().then((clear) {
-      if (!mounted) return;
-      setState(() => _isObscured = !clear);
-    });
 
-    // Pantau perubahan status Sematkan Layar, Mode Tombol, dan jendela mengambang
+    // Pantau perubahan status Sematkan Layar dan Mode Tombol
     lockdown.onLockStateChanged = (bool isPinned, bool isObscured, bool isThreeButton) {
       if (!mounted) return;
       setState(() {
         _isPinned = isPinned;
-        _isObscured = isObscured;
         _isThreeButtonMode = isThreeButton;
       });
     };
@@ -432,7 +426,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       );
     }
 
-    final bool shouldShowCurtain = _isObscured || !_isPinned;
+    final bool shouldShowCurtain = !_isPinned;
 
     return Stack(
       children: [
@@ -442,10 +436,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Tirai pelindung saat aplikasi mengambang terdeteksi atau layar belum disematkan (mode tombol & mode gestur)
+  /// Tirai pelindung saat layar ujian belum disematkan (Screen Pinning wajib aktif)
   Widget _buildSecurityCurtain() {
-    final bool isPinRequired = !_isPinned;
-
     return Positioned.fill(
       child: Material(
         color: const Color(0xFF141824),
@@ -475,11 +467,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       ),
                     ),
                     const SizedBox(height: NetriSpacing.space4),
-                    Text(
-                      isPinRequired
-                          ? 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'
-                          : 'Aplikasi Mengambang (Floating App) Terdeteksi!',
-                      style: const TextStyle(
+                    const Text(
+                      'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 19,
                         fontWeight: FontWeight.bold,
@@ -488,11 +478,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     ),
                     const SizedBox(height: NetriSpacing.space3),
                     Text(
-                      isPinRequired
-                          ? (_isThreeButtonMode
-                              ? 'Pada mode tombol, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar tombol Home dan Recent terkunci penuh selama ujian.'
-                              : 'Pada mode gestur, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar HP terkunci dan tidak dapat membuka aplikasi lain selama ujian berlangsung.')
-                          : 'Lembar soal disembunyikan karena terdeteksi jendela mengambang atau split-screen aktif di layar. Tutup semua jendela mengambang lalu tekan tombol di bawah untuk melanjutkan ujian.',
+                      _isThreeButtonMode
+                          ? 'Pada mode tombol, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar tombol Home dan Recent terkunci penuh selama ujian.'
+                          : 'Pada mode gestur, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar HP terkunci dan tidak dapat membuka aplikasi lain selama ujian berlangsung.',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13.5,
@@ -510,47 +498,35 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                           borderRadius: BorderRadius.circular(NetriRadius.md),
                         ),
                       ),
-                      icon: Icon(isPinRequired ? Icons.lock_rounded : Icons.refresh_rounded, size: 20),
-                      label: Text(
-                        isPinRequired ? 'Kunci Layar & Mulai Ujian' : 'Periksa Ulang Layar & Lanjut',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      icon: const Icon(Icons.lock_rounded, size: 20),
+                      label: const Text(
+                        'Kunci Layar & Mulai Ujian',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
-                        if (isPinRequired) {
-                          final pinned = await LockdownService().requestLockTask();
-                          final clear = await LockdownService().checkScreenClear();
-                          if (!mounted) return;
-                          setState(() {
-                            _isPinned = pinned;
-                            _isObscured = !clear;
-                          });
-                        } else {
-                          final clear = await LockdownService().checkScreenClear();
-                          if (!mounted) return;
-                          setState(() {
-                            _isObscured = !clear;
-                          });
-                        }
+                        final pinned = await LockdownService().requestLockTask();
+                        if (!mounted) return;
+                        setState(() {
+                          _isPinned = pinned;
+                        });
                       },
                     ),
-                    if (isPinRequired) ...[
-                      const SizedBox(height: NetriSpacing.space2),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white70,
-                          side: const BorderSide(color: Colors.white30),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(NetriRadius.md),
-                          ),
+                    const SizedBox(height: NetriSpacing.space2),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white30),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(NetriRadius.md),
                         ),
-                        icon: const Icon(Icons.settings_rounded, size: 18),
-                        label: const Text('Buka Pengaturan Sematkan Layar'),
-                        onPressed: () {
-                          LockdownService().openSecuritySettings();
-                        },
                       ),
-                    ],
+                      icon: const Icon(Icons.settings_rounded, size: 18),
+                      label: const Text('Buka Pengaturan Sematkan Layar'),
+                      onPressed: () {
+                        LockdownService().openSecuritySettings();
+                      },
+                    ),
                   ],
                 ),
               ),

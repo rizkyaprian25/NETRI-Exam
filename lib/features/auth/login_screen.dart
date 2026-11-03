@@ -24,10 +24,37 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     // Pastikan status penguncian dan suara alarm selalu nonaktif di layar login
     LockdownService().disableLockdown();
+    _urlController.addListener(_onUrlChanged);
+    _checkFloatingAppStatus();
+  }
+
+  void _onUrlChanged() {
+    // Deteksi aplikasi mengambang saat siswa memasukkan atau menempel tautan formulir
+    _checkFloatingAppStatus();
+  }
+
+  /// Memeriksa apakah ada aplikasi mengambang (Floating Apps) yang aktif di layar sebelum ujian dimulai
+  Future<void> _checkFloatingAppStatus() async {
+    final isClear = await LockdownService().checkScreenClear();
+    if (!mounted) return;
+    if (!isClear) {
+      if (_errorMessage == null || !_errorMessage!.contains('aplikasi mengambang')) {
+        setState(() {
+          _errorMessage =
+              'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
+              'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
+        });
+      }
+    } else if (_errorMessage != null && _errorMessage!.contains('aplikasi mengambang')) {
+      setState(() {
+        _errorMessage = null;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _urlController.removeListener(_onUrlChanged);
     _urlController.dispose();
     super.dispose();
   }
@@ -46,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
 
         if (mounted) {
+          _checkFloatingAppStatus();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Row(
@@ -311,6 +339,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               TextField(
                                 controller: _urlController,
                                 keyboardType: TextInputType.url,
+                                onTap: _checkFloatingAppStatus,
                                 decoration: InputDecoration(
                                   hintText: 'https://forms.gle/... atau docs.google.com...',
                                   prefixIcon: const Icon(Icons.link_rounded),

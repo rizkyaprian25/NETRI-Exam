@@ -17,6 +17,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.ActionMode
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -35,11 +36,11 @@ class MainActivity : FlutterActivity() {
     private val STARTUP_GRACE_PERIOD_MS = 3000L
     private val PIN_DIALOG_GRACE_MS = 5000L
 
-    // Status sematkan layar (Lock Task), status fokus, dan mode navigasi
+    // Status sematkan layar (Lock Task), status fokus, deteksi floating apps, dan mode navigasi
     private var wasPinnedOnce = false
     private var isTopResumed = true
+    private var isWindowObscured = false
     private var lastReportedPinned: Boolean? = null
-    private var lastReportedObscured: Boolean? = null
     private var lastReportedThreeButton: Boolean? = null
 
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -146,7 +147,7 @@ class MainActivity : FlutterActivity() {
     // Memeriksa apakah layar bersih dari floating apps, split-screen, dan kehilangan fokus
     private fun isScreenClear(): Boolean {
         val multiWindow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
-        return hasWindowFocus() && isTopResumed && !multiWindow
+        return !isWindowObscured && hasWindowFocus() && isTopResumed && !multiWindow
     }
 
     // Memeriksa apakah aplikasi berada dalam Lock Task Mode (Pinned)
@@ -243,25 +244,20 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
-    // Mengirim status pinned, floating app (obscured), dan mode tombol ke Flutter
+    // Mengirim status pinned dan mode tombol ke Flutter
     private fun notifyFlutterStateIfChanged() {
         val pinned = isInLockTaskMode()
         val threeButton = isThreeButtonNavigation()
-        val obscured = !isScreenClear() && !isInPinDialogGracePeriod()
-        if (pinned != lastReportedPinned ||
-            threeButton != lastReportedThreeButton ||
-            obscured != lastReportedObscured
-        ) {
+        if (pinned != lastReportedPinned || threeButton != lastReportedThreeButton) {
             lastReportedPinned = pinned
             lastReportedThreeButton = threeButton
-            lastReportedObscured = obscured
             runOnUiThread {
                 try {
                     methodChannel?.invokeMethod(
                         "onLockStateChanged",
                         mapOf(
                             "isPinned" to pinned,
-                            "isObscured" to obscured,
+                            "isObscured" to false,
                             "isThreeButton" to threeButton
                         )
                     )
@@ -653,9 +649,21 @@ class MainActivity : FlutterActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
+    // Deteksi sentuhan terhalang jendela mengambang (floating apps) pada layar beranda / pra-ujian
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (!isLockdownActive && ev != null) {
+            val obscured = (ev.flags and MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0
+            isWindowObscured = obscured
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     // Deteksi jika jendela kehilangan fokus (misal floating app menyala atau siswa menyentuh notifikasi)
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !isLockdownActive) {
+            isWindowObscured = false
+        }
         if (isLockdownActive) {
             if (!hasFocus) {
                 if (!isInPinDialogGracePeriod()) {

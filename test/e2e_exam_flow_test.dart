@@ -240,7 +240,7 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Anti Floating Apps: Tolak Masuk Saat Ada Floating App & Tirai Menutup Saat Terdeteksi Obscured',
+      'Skenario Anti Floating Apps: Tolak Masuk Saat Memasukkan Link & Saat Mulai Ujian Jika Masih Ada Floating App',
       (WidgetTester tester) async {
         bool mockScreenClear = false;
 
@@ -259,23 +259,34 @@ void main() {
         await tester.pumpWidget(const NetriExamApp());
         await tester.pumpAndSettle();
 
+        // 1. Saat memasukkan link form di login ketika ada floating app aktif (mockScreenClear = false)
         final urlField = find.byType(TextField).first;
         await tester.enterText(urlField, 'https://forms.gle/floatingTest123');
+        await tester.pumpAndSettle();
 
-        // 1. Coba mulai ujian saat Chrome mengambang masih aktif (mockScreenClear = false)
+        // Peringatan deteksi floating app muncul saat input link
+        expect(
+          find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
+          findsOneWidget,
+        );
+
+        // 2. Coba klik mulai ujian saat floating app masih ada: Ujian DITOLAK
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
-        // Pastikan ditolak di layar Login dengan peringatan Floating App
         expect(
           find.textContaining('Terdeteksi aplikasi mengambang (Floating App / Split-Screen)'),
           findsOneWidget,
         );
         expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 2. Setelah layar bersih di beranda, lanjutkan masuk ke ruang ujian
+        // 3. Setelah floating app ditutup (mockScreenClear = true)
         mockScreenClear = true;
+        await tester.tap(urlField);
+        await tester.pumpAndSettle();
+
+        // Tekan Mulai Ujian: Berhasil masuk ke konfirmasi dan lembar ujian
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
@@ -286,35 +297,9 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
+        // Di dalam ujian, lembar ujian tampil bersih tanpa gangguan tirai floating app
         expect(find.byType(ExamSessionScreen), findsOneWidget);
         expect(find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'), findsNothing);
-
-        // 3. Simulasikan floating app tiba-tiba muncul di tengah ujian
-        mockScreenClear = false;
-        final lockdown = LockdownService();
-        lockdown.onLockStateChanged?.call(true, true, false);
-        await tester.pumpAndSettle();
-
-        // Tirai Pelindung wajib menutupi soal ujian
-        expect(
-          find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'),
-          findsOneWidget,
-        );
-
-        // 4. Setelah floating app ditutup, tekan periksa ulang
-        mockScreenClear = true;
-        final refreshButton = find.widgetWithText(
-          ElevatedButton,
-          'Periksa Ulang Layar & Lanjut',
-        );
-        expect(refreshButton, findsOneWidget);
-        await tester.tap(refreshButton);
-        await tester.pumpAndSettle();
-
-        expect(
-          find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'),
-          findsNothing,
-        );
       },
     );
 
