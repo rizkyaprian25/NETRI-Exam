@@ -954,6 +954,19 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (isLockdownActive) {
+            bringAppToFront()
+            if (intent.getBooleanExtra("FORCE_RELAUNCH_ALARM", false) ||
+                (!isInPinDialogGracePeriod() && !isInStartupGracePeriod())) {
+                startAlarmSound(5000L)
+                methodChannel?.invokeMethod("onUserLeaveHint", null)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         ExamGuardService.isActivityInForeground = true
@@ -982,7 +995,9 @@ class MainActivity : FlutterActivity() {
         ExamGuardService.isActivityInForeground = false
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
+                startAlarmSound(5000L)
                 bringAppToFront()
+                methodChannel?.invokeMethod("onUserLeaveHint", null)
             }
         }
     }

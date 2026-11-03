@@ -18,7 +18,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _urlController = TextEditingController();
   String? _errorMessage;
-  bool _isGestureError = false;
 
   @override
   void initState() {
@@ -67,12 +66,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// Memulai sesi ujian dalam mode ketat setelah memvalidasi Mode 3 Tombol dan layar bersih dari floating apps
+  /// Memulai sesi ujian dalam mode ketat setelah memvalidasi izin overlay dan kebersihan layar
   Future<void> _startExam() async {
     final rawUrl = _urlController.text.trim();
     if (rawUrl.isEmpty) {
       setState(() {
-        _isGestureError = false;
         _errorMessage = 'Harap tempel tautan form atau pindai QR Code ujian.';
       });
       return;
@@ -81,32 +79,16 @@ class _LoginScreenState extends State<LoginScreen> {
     final uri = Uri.tryParse(rawUrl);
     if (uri == null || (!rawUrl.contains('google.com') && !rawUrl.contains('forms.gle'))) {
       setState(() {
-        _isGestureError = false;
         _errorMessage = 'Tautan harus berupa formulir Google Forms yang sah.';
       });
       return;
     }
 
-    // Lapis 1: Tolak masuk ujian jika HP masih menggunakan Navigasi Mode Gerakan (Gesture Navigation)
-    final isThreeButton = await LockdownService().isThreeButtonNavigation();
-    if (!mounted) return;
-    if (!isThreeButton) {
-      setState(() {
-        _isGestureError = true;
-        _errorMessage =
-            'Terdeteksi HP menggunakan Navigasi Mode Gerakan (Gesture)! '
-            'Wajib ubah ke Mode Navigasi 3 Tombol terlebih dahulu agar layar ujian terkunci penuh.';
-      });
-      _showGestureModeBlockedSheet();
-      return;
-    }
-
-    // Lapis 2: Tolak masuk ujian jika terdeteksi ada floating app (misal Chrome mengambang) atau split-screen aktif
+    // Lapis 1: Tolak masuk ujian jika terdeteksi ada floating app (misal Chrome mengambang) atau split-screen aktif
     final isClear = await LockdownService().checkScreenClear();
     if (!mounted) return;
     if (!isClear) {
       setState(() {
-        _isGestureError = false;
         _errorMessage =
             'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
             'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
@@ -114,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Lapis 3: Pastikan izin Overlay ("Tampilkan di atas aplikasi lain") aktif untuk menahan paksa layar jika keluar
+    // Lapis 2: Wajibkan izin Overlay ("Tampilkan di atas aplikasi lain") untuk menarik layar jika siswa keluar
     final hasOverlay = await LockdownService().hasOverlayPermission();
     if (!mounted) return;
     if (!hasOverlay) {
@@ -122,31 +104,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // Deteksi apakah HP menggunakan Mode Gerakan (Gesture) untuk menampilkan peringatan khusus
+    final isThreeButton = await LockdownService().isThreeButtonNavigation();
+    if (!mounted) return;
+
     setState(() {
-      _isGestureError = false;
       _errorMessage = null;
     });
 
     _showConfirmationBottomSheet(
+      isGestureMode: !isThreeButton,
       onConfirmed: () async {
-        // Periksa ulang Mode 3 Tombol dan kebersihan layar tepat sebelum mengunci sesi ujian
-        final stillThreeButton = await LockdownService().isThreeButtonNavigation();
-        if (!mounted) return;
-        if (!stillThreeButton) {
-          setState(() {
-            _isGestureError = true;
-            _errorMessage =
-                'Terdeteksi HP menggunakan Navigasi Mode Gerakan (Gesture)! '
-                'Wajib ubah ke Mode Navigasi 3 Tombol terlebih dahulu agar layar ujian terkunci penuh.';
-          });
-          return;
-        }
-
         final stillClear = await LockdownService().checkScreenClear();
         if (!mounted) return;
         if (!stillClear) {
           setState(() {
-            _isGestureError = false;
             _errorMessage =
                 'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
                 'Harap tutup semua jendela mengambang terlebih dahulu sebelum memulai ujian.';
@@ -183,98 +155,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Lembar peringatan wajib mengganti Mode Gerakan (Gesture) ke Mode 3 Tombol sebelum ujian
-  void _showGestureModeBlockedSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(NetriRadius.lg)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(NetriSpacing.space5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: NetriColors.stateDangerLight.withAlpha(25),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.swipe_rounded,
-                      color: NetriColors.stateDangerLight,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: NetriSpacing.space3),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Mode Gerakan (Gesture) Dilarang!',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        Text(
-                          'Wajib Gunakan Mode Navigasi 3 Tombol',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: NetriColors.stateDangerLight,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: NetriSpacing.space4),
-              const Text(
-                'HP Anda saat ini menggunakan Navigasi Gerakan (Swipe/Usap). Demi menjaga ujian tetap terkunci rapat dan mencegah keluar aplikasi secara sengaja maupun tidak sengaja:\n\n'
-                '1. Tekan tombol "Buka Pengaturan Navigasi HP" di bawah.\n'
-                '2. Pilih menu Navigasi Sistem / Layar Penuh.\n'
-                '3. Ubah dari "Gerakan (Gestures)" menjadi "Tombol (3-Button Navigation)".\n'
-                '4. Kembali ke aplikasi NETRI Exam untuk memulai ujian.',
-                style: TextStyle(fontSize: 12.5, height: 1.45),
-              ),
-              const SizedBox(height: NetriSpacing.space5),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: NetriColors.brandLight,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(NetriRadius.md),
-                  ),
-                ),
-                icon: const Icon(Icons.settings_rounded, size: 20),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  LockdownService().openNavigationSettings();
-                },
-                label: const Text(
-                  'Buka Pengaturan Navigasi HP',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: NetriSpacing.space2),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Tutup & Coba Lagi'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Lembar permintaan izin "Tampilkan di atas aplikasi lain" (Overlay) untuk proteksi anti-keluar
   void _showOverlayPermissionSheet() {
     showModalBottomSheet(
@@ -304,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: NetriSpacing.space3),
               const Text(
-                'Agar lembar ujian tidak dapat ditinggalkan sebelum selesai, harap aktifkan izin "Tampilkan di atas aplikasi lain" untuk Exam NETRI.',
+                'Agar lembar ujian tidak dapat ditinggalkan dan tetap terlindungi saat menggunakan navigasi gerakan, harap aktifkan izin "Tampilkan di atas aplikasi lain" untuk Exam NETRI.',
                 style: TextStyle(fontSize: 13, height: 1.45),
               ),
               const SizedBox(height: NetriSpacing.space4),
@@ -332,7 +212,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Lembar konfirmasi ringkas sebelum mengunci layar
-  void _showConfirmationBottomSheet({required VoidCallback onConfirmed}) {
+  void _showConfirmationBottomSheet({
+    required VoidCallback onConfirmed,
+    bool isGestureMode = false,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -387,6 +270,36 @@ class _LoginScreenState extends State<LoginScreen> {
                 '• Mencoba keluar akan membunyikan alarm suara "Aku Nyontek!" keras selama 5 detik!',
                 style: TextStyle(fontSize: 12, height: 1.4),
               ),
+
+              if (isGestureMode) ...[
+                const SizedBox(height: NetriSpacing.space3),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withAlpha(30),
+                    borderRadius: BorderRadius.circular(NetriRadius.sm),
+                    border: Border.all(color: Colors.amber.shade700.withAlpha(80)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.swipe_rounded, color: Colors.amber.shade900, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Mode Gerakan (Gesture) Terdeteksi:\n'
+                          'Layar dijaga oleh pengawal otomatis. Mencoba usap keluar akan membunyikan teriakan "Aku Nyontek!" 5 detik dan ditarik kembali!',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.amber.shade900,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               const SizedBox(height: NetriSpacing.space5),
               ElevatedButton.icon(
@@ -565,38 +478,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(NetriRadius.sm),
                             border: Border.all(color: NetriColors.stateDangerLight.withAlpha(60)),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                          child: Row(
                             children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.error_outline_rounded, size: 20, color: NetriColors.stateDangerLight),
-                                  const SizedBox(width: NetriSpacing.space2),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: const TextStyle(color: NetriColors.stateDangerLight, fontSize: 13),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_isGestureError) ...[
-                                const SizedBox(height: NetriSpacing.space2),
-                                OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: NetriColors.stateDangerLight,
-                                    side: const BorderSide(color: NetriColors.stateDangerLight),
-                                  ),
-                                  icon: const Icon(Icons.settings_rounded, size: 18),
-                                  label: const Text(
-                                    'Ubah ke Mode 3 Tombol di Pengaturan',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                  ),
-                                  onPressed: () {
-                                    LockdownService().openNavigationSettings();
-                                  },
+                              const Icon(Icons.error_outline_rounded, size: 20, color: NetriColors.stateDangerLight),
+                              const SizedBox(width: NetriSpacing.space2),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(color: NetriColors.stateDangerLight, fontSize: 13),
                                 ),
-                              ],
+                              ),
                             ],
                           ),
                         ),

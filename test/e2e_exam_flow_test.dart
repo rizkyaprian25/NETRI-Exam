@@ -321,9 +321,10 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Blokir Mode Gerakan (Gesture Navigation): Tolak Masuk Saat Mode Gerakan Aktif & Izinkan Setelah Ubah ke Mode 3 Tombol',
+      'Skenario Mode Gerakan (Gesture Navigation): Diizinkan Ujian Langsung dengan Proteksi Overlay & Alarm Teriakan Siap Siaga',
       (WidgetTester tester) async {
-        bool mockIsThreeButton = false;
+        bool mockIsThreeButton = false; // Mode Gerakan aktif
+        bool mockHasOverlay = false;
 
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
@@ -333,9 +334,11 @@ void main() {
             if (methodCall.method == 'isThreeButtonNavigation') {
               return mockIsThreeButton;
             }
-            if (methodCall.method == 'openNavigationSettings') {
-              // Simulasikan siswa mengubah dari Mode Gerakan ke Mode 3 Tombol di Pengaturan HP
-              mockIsThreeButton = true;
+            if (methodCall.method == 'hasOverlayPermission') {
+              return mockHasOverlay;
+            }
+            if (methodCall.method == 'requestOverlayPermission') {
+              mockHasOverlay = true;
               return true;
             }
             return true;
@@ -346,31 +349,35 @@ void main() {
         await tester.pumpAndSettle();
 
         final urlField = find.byType(TextField).first;
-        await tester.enterText(urlField, 'https://forms.gle/gestureTest123');
+        await tester.enterText(urlField, 'https://forms.gle/gestureAllowedTest123');
 
-        // 1. Coba mulai ujian saat HP menggunakan Mode Gerakan (mockIsThreeButton = false)
+        // 1. Coba mulai ujian saat izin Overlay belum diberikan
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
-        // Pastikan ditolak dan muncul modal peringatan Mode Gerakan Dilarang
-        expect(find.text('Mode Gerakan (Gesture) Dilarang!'), findsOneWidget);
+        // Pastikan muncul permintaan izin overlay untuk menjaga layar di Mode Gerakan
+        expect(find.text('Izin Penguncian Layar Ujian Diperlukan'), findsOneWidget);
         expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 2. Siswa menekan tombol 'Buka Pengaturan Navigasi HP' untuk mengubah ke Mode 3 Tombol
-        final openNavSettingsButton = find.widgetWithText(
+        // 2. Siswa mengaktifkan izin overlay
+        final grantOverlayButton = find.widgetWithText(
           ElevatedButton,
-          'Buka Pengaturan Navigasi HP',
+          'Aktifkan Izin Kunci Layar',
         );
-        expect(openNavSettingsButton, findsOneWidget);
-        await tester.tap(openNavSettingsButton);
+        expect(grantOverlayButton, findsOneWidget);
+        await tester.tap(grantOverlayButton);
         await tester.pumpAndSettle();
 
-        expect(channelCallLog, contains('openNavigationSettings'));
+        expect(channelCallLog, contains('requestOverlayPermission'));
 
-        // 3. Setelah kembali dengan Mode 3 Tombol aktif (mockIsThreeButton = true), mulai ujian berhasil
+        // 3. Setelah izin overlay aktif, siswa diizinkan ujian langsung meski di Mode Gerakan
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
+
+        // Pastikan konfirmasi ujian menampilkan info proteksi Mode Gerakan
+        expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
+        expect(find.textContaining('Mode Gerakan (Gesture) Terdeteksi'), findsOneWidget);
 
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
@@ -380,8 +387,10 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
+        // Masuk ke ruang ujian terkunci secara lancar
         expect(find.byType(ExamSessionScreen), findsOneWidget);
         expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
+        expect(channelCallLog, contains('enableSecureWindow'));
       },
     );
   });

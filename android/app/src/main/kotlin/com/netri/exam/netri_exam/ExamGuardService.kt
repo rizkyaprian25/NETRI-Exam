@@ -61,7 +61,7 @@ class ExamGuardService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // Loop pengawas latar belakang setiap 350ms untuk mengembalikan layar ujian jika siswa swipe keluar
+    // Loop pengawas latar belakang setiap 200ms untuk mengembalikan layar ujian jika siswa swipe keluar
     private val watchdogRunnable = object : Runnable {
         override fun run() {
             if (!isGuardActive) {
@@ -73,7 +73,7 @@ class ExamGuardService : Service() {
                 relaunchExamActivity()
             }
 
-            handler.postDelayed(this, 350)
+            handler.postDelayed(this, 200)
         }
     }
 
@@ -81,13 +81,13 @@ class ExamGuardService : Service() {
         super.onCreate()
         startForegroundSafely()
         handler.removeCallbacks(watchdogRunnable)
-        handler.postDelayed(watchdogRunnable, 350)
+        handler.postDelayed(watchdogRunnable, 200)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundSafely()
         handler.removeCallbacks(watchdogRunnable)
-        handler.postDelayed(watchdogRunnable, 350)
+        handler.postDelayed(watchdogRunnable, 200)
         return START_STICKY
     }
 
@@ -164,6 +164,7 @@ class ExamGuardService : Service() {
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
                 )
+                putExtra("FORCE_RELAUNCH_ALARM", true)
             }
             startActivity(intent)
         } catch (e: Exception) {}

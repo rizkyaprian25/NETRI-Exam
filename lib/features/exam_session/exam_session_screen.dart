@@ -435,22 +435,17 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     return Stack(
       children: [
         content,
-        if (_isGestureMode || _isObscured || !_isPinned) _buildSecurityCurtain(),
+        if (_isObscured || !_isPinned) _buildSecurityCurtain(),
       ],
     );
   }
 
-  /// Tirai pelindung penuh saat Mode Gerakan aktif, Floating App terdeteksi, atau Sematkan Layar terlepas
+  /// Tirai pelindung penuh saat Floating App terdeteksi atau Sematkan Layar terlepas
   Widget _buildSecurityCurtain() {
     final String titleText;
     final String bodyText;
 
-    if (_isGestureMode) {
-      titleText = 'Mode Gerakan (Gesture) Terdeteksi!';
-      bodyText =
-          'Lembar soal disembunyikan karena HP menggunakan Navigasi Mode Gerakan (Gesture). '
-          'Wajib ubah ke Mode Navigasi 3 Tombol di Pengaturan HP agar layar ujian terkunci penuh dan tidak bisa keluar.';
-    } else if (_isObscured) {
+    if (_isObscured) {
       titleText = 'Aplikasi Mengambang (Floating App) Terdeteksi!';
       bodyText =
           'Lembar soal disembunyikan karena terdeteksi jendela mengambang (seperti Chrome Floating Window) aktif di layar. '
@@ -458,7 +453,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     } else {
       titleText = 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!';
       bodyText =
-          'Agar layar ujian terkunci rapat dan seluruh aplikasi mengambang tertutup otomatis selama ujian, '
+          'Agar seluruh aplikasi mengambang tertutup otomatis dan lembar ujian terlindungi selama ujian berlangsung, '
           'Anda wajib menekan "Sematkan / Oke" pada konfirmasi sistem Android.';
     }
 
@@ -483,8 +478,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.redAccent, width: 2),
                         ),
-                        child: Icon(
-                          _isGestureMode ? Icons.swipe_rounded : Icons.phonelink_lock_rounded,
+                        child: const Icon(
+                          Icons.phonelink_lock_rounded,
                           color: Colors.redAccent,
                           size: 44,
                         ),
@@ -511,33 +506,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: NetriSpacing.space5),
-                    if (_isGestureMode) ...[
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: NetriColors.brandLight,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(NetriRadius.md),
-                          ),
-                        ),
-                        icon: const Icon(Icons.settings_rounded, size: 20),
-                        label: const Text(
-                          'Buka Pengaturan Navigasi HP (Pilih 3 Tombol)',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        onPressed: () async {
-                          await LockdownService().openNavigationSettings();
-                          final threeButton = await LockdownService().isThreeButtonNavigation();
-                          if (!mounted) return;
-                          setState(() => _isGestureMode = !threeButton);
-                        },
-                      ),
-                      const SizedBox(height: NetriSpacing.space2),
-                    ],
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _isGestureMode ? Colors.white24 : NetriColors.brandLight,
+                        backgroundColor: NetriColors.brandLight,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -577,6 +548,22 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                         LockdownService().openSecuritySettings();
                       },
                     ),
+                    if (_isGestureMode && !_isPinned) ...[
+                      const SizedBox(height: NetriSpacing.space2),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white60,
+                        ),
+                        icon: const Icon(Icons.touch_app_rounded, size: 16),
+                        label: const Text(
+                          'Opsional: Ubah ke Mode 3 Tombol di Pengaturan HP',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        onPressed: () {
+                          LockdownService().openNavigationSettings();
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
