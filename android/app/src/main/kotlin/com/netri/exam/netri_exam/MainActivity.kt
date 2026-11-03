@@ -35,9 +35,11 @@ class MainActivity : FlutterActivity() {
     private val STARTUP_GRACE_PERIOD_MS = 3000L
     private val PIN_DIALOG_GRACE_MS = 5000L
 
-    // Status sematkan layar (Lock Task) dan mode navigasi
+    // Status sematkan layar (Lock Task), status fokus, dan mode navigasi
     private var wasPinnedOnce = false
+    private var isTopResumed = true
     private var lastReportedPinned: Boolean? = null
+    private var lastReportedObscured: Boolean? = null
     private var lastReportedThreeButton: Boolean? = null
 
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -141,13 +143,10 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Memeriksa apakah aplikasi sedang tidak dalam mode split-screen multi window
+    // Memeriksa apakah layar bersih dari floating apps, split-screen, dan kehilangan fokus
     private fun isScreenClear(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            !isInMultiWindowMode
-        } else {
-            true
-        }
+        val multiWindow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
+        return hasWindowFocus() && isTopResumed && !multiWindow
     }
 
     // Memeriksa apakah aplikasi berada dalam Lock Task Mode (Pinned)
@@ -244,20 +243,25 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
-    // Mengirim status pinned dan mode tombol ke Flutter
+    // Mengirim status pinned, floating app (obscured), dan mode tombol ke Flutter
     private fun notifyFlutterStateIfChanged() {
         val pinned = isInLockTaskMode()
         val threeButton = isThreeButtonNavigation()
-        if (pinned != lastReportedPinned || threeButton != lastReportedThreeButton) {
+        val obscured = !isScreenClear() && !isInPinDialogGracePeriod()
+        if (pinned != lastReportedPinned ||
+            threeButton != lastReportedThreeButton ||
+            obscured != lastReportedObscured
+        ) {
             lastReportedPinned = pinned
             lastReportedThreeButton = threeButton
+            lastReportedObscured = obscured
             runOnUiThread {
                 try {
                     methodChannel?.invokeMethod(
                         "onLockStateChanged",
                         mapOf(
                             "isPinned" to pinned,
-                            "isObscured" to false,
+                            "isObscured" to obscured,
                             "isThreeButton" to threeButton
                         )
                     )
@@ -649,6 +653,7 @@ class MainActivity : FlutterActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
+    // Deteksi jika jendela kehilangan fokus (misal floating app menyala atau siswa menyentuh notifikasi)
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (isLockdownActive) {
@@ -656,7 +661,7 @@ class MainActivity : FlutterActivity() {
                 if (!isInPinDialogGracePeriod()) {
                     collapseStatusBar()
                     if (!isInStartupGracePeriod()) {
-                        startAlarmSound(5000L)
+                        startAlarmSound(-1L)
                     }
                 }
             } else {
@@ -665,6 +670,28 @@ class MainActivity : FlutterActivity() {
                 applyImmersiveMode()
             }
         }
+        notifyFlutterStateIfChanged()
+    }
+
+    // Deteksi perubahan status Top Resumed pada Android 10+ (misal siswa mengetuk floating app Chrome/WA)
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        isTopResumed = isTopResumedActivity
+        if (isLockdownActive && !isTopResumedActivity) {
+            if (!isInStartupGracePeriod() && !isInPinDialogGracePeriod()) {
+                startAlarmSound(-1L)
+            }
+        }
+        notifyFlutterStateIfChanged()
+    }
+
+    // Deteksi multi-window / split-screen
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        if (isLockdownActive && isInMultiWindowMode) {
+            startAlarmSound(-1L)
+        }
+        notifyFlutterStateIfChanged()
     }
 
     // Deteksi saat pengguna keluar via tombol Home, Recent Apps, atau usap navigasi gerakan (Gesture)
