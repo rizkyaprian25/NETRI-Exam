@@ -118,8 +118,8 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                             Flexible(
                               child: Text(
                                 _secondsLeft > 0
-                                    ? 'Sirine Peringatan Berbunyi ($_secondsLeft detik)'
-                                    : 'Sirine Telah Berakhir',
+                                    ? 'Alarm Suara "Aku Nyontek!" ($_secondsLeft detik)'
+                                    : 'Alarm Suara Telah Berakhir',
                                 style: const TextStyle(
                                   color: Colors.red,
                                   fontWeight: FontWeight.bold,

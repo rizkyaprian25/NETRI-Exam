@@ -266,7 +266,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Sirine peringatan aktif selama 5 detik!',
+                      'Alarm suara "Aku Nyontek!" aktif selama 5 detik!',
                       style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),

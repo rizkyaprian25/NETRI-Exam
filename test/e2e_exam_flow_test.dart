@@ -89,7 +89,7 @@ void main() {
         // 5. Verifikasi Modal Konfirmasi Bottom Sheet
         expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
         expect(find.textContaining('Pengawasan Guru • Layar 100% • Suara 100%'), findsOneWidget);
-        expect(find.textContaining('Mencoba keluar akan membunyikan sirine'), findsOneWidget);
+        expect(find.textContaining('Mencoba keluar akan membunyikan alarm suara'), findsOneWidget);
 
         // 6. Mulai Ujian Secara Resmi
         final confirmStartButton = find.widgetWithText(
@@ -116,7 +116,7 @@ void main() {
 
         // Pastikan dialog Dilarang Keluar muncul dan sirine 5000ms dipanggil
         expect(find.text('Dilarang Keluar!'), findsOneWidget);
-        expect(find.text('Sirine peringatan aktif selama 5 detik!'), findsOneWidget);
+        expect(find.text('Alarm suara "Aku Nyontek!" aktif selama 5 detik!'), findsOneWidget);
         expect(channelCallLog, contains('startAlarmSound'));
         expect(channelArguments['durationMs'], equals(5000));
 

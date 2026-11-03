@@ -190,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text(
                 '• Kecerahan layar & volume suara otomatis disetel 100% dan tidak dapat dikecilkan.\n'
                 '• Notifikasi ditutup dan dilarang membuka aplikasi lain.\n'
-                '• Mencoba keluar akan membunyikan sirine peringatan keras 5 detik!',
+                '• Mencoba keluar akan membunyikan alarm suara "Aku Nyontek!" keras selama 5 detik!',
                 style: TextStyle(fontSize: 12, height: 1.4),
               ),
 

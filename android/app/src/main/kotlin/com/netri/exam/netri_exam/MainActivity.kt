@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
@@ -48,7 +49,8 @@ class MainActivity : FlutterActivity() {
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
 
-    // AudioTrack untuk mensintesis suara sirine darurat yang tajam, keras, dan menusuk
+    // Media player & AudioTrack untuk memutar alarm suara "Aku Nyontek!" dan sirine darurat
+    private var voiceMediaPlayer: MediaPlayer? = null
     private var sirenAudioTrack: AudioTrack? = null
     private var fallbackToneGenerator: ToneGenerator? = null
     private var sirenPcmBuffer: ShortArray? = null
@@ -476,44 +478,70 @@ class MainActivity : FlutterActivity() {
                 // Hentikan pemutaran sebelumnya jika masih aktif
                 stopAlarmSound()
 
-                val buffer = getOrCreateSirenBuffer()
-                val sampleRate = 44100
-
-                val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-
-                val audioFormat = AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-
-                val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    AudioTrack.Builder()
-                        .setAudioAttributes(audioAttributes)
-                        .setAudioFormat(audioFormat)
-                        .setBufferSizeInBytes(buffer.size * 2)
-                        .setTransferMode(AudioTrack.MODE_STATIC)
-                        .build()
-                } else {
-                    @Suppress("DEPRECATION")
-                    AudioTrack(
-                        audioAttributes,
-                        audioFormat,
-                        buffer.size * 2,
-                        AudioTrack.MODE_STATIC,
-                        AudioManager.AUDIO_SESSION_ID_GENERATE
-                    )
+                // 1. Prioritas Utama: Putar rekaman suara berteriak "Aku Nyontek! Aku Nyontek! Aku Nyontek!" dari res/raw
+                var playedVoice = false
+                try {
+                    val resId = resources.getIdentifier("alarm_nyontek", "raw", packageName)
+                    if (resId != 0) {
+                        val mp = MediaPlayer.create(this, resId)
+                        if (mp != null) {
+                            val audioAttributes = AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build()
+                            mp.setAudioAttributes(audioAttributes)
+                            mp.setVolume(1.0f, 1.0f)
+                            mp.isLooping = true
+                            mp.start()
+                            voiceMediaPlayer = mp
+                            playedVoice = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    playedVoice = false
                 }
 
-                track.write(buffer, 0, buffer.size)
-                track.setLoopPoints(0, buffer.size, -1) // Loop sirine tak terputus
-                track.setVolume(1.0f)
-                track.play()
+                // 2. Cadangan: Jika MediaPlayer gagal, jalankan sintesis PCM sirine darurat wailing
+                if (!playedVoice) {
+                    val buffer = getOrCreateSirenBuffer()
+                    val sampleRate = 44100
 
-                sirenAudioTrack = track
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+
+                    val audioFormat = AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+
+                    val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        AudioTrack.Builder()
+                            .setAudioAttributes(audioAttributes)
+                            .setAudioFormat(audioFormat)
+                            .setBufferSizeInBytes(buffer.size * 2)
+                            .setTransferMode(AudioTrack.MODE_STATIC)
+                            .build()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        AudioTrack(
+                            audioAttributes,
+                            audioFormat,
+                            buffer.size * 2,
+                            AudioTrack.MODE_STATIC,
+                            AudioManager.AUDIO_SESSION_ID_GENERATE
+                        )
+                    }
+
+                    track.write(buffer, 0, buffer.size)
+                    track.setLoopPoints(0, buffer.size, -1) // Loop sirine tak terputus
+                    track.setVolume(1.0f)
+                    track.play()
+
+                    sirenAudioTrack = track
+                }
 
                 // Hentikan otomatis tepat setelah durasi tertentu (bawaan: 5 detik)
                 alarmTimerRunnable = Runnable {
@@ -545,6 +573,16 @@ class MainActivity : FlutterActivity() {
                     alarmTimerRunnable = null
                 }
 
+                voiceMediaPlayer?.let {
+                    try {
+                        if (it.isPlaying) {
+                            it.stop()
+                        }
+                        it.release()
+                    } catch (e: Exception) {}
+                }
+                voiceMediaPlayer = null
+
                 sirenAudioTrack?.let {
                     try {
                         if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
@@ -563,6 +601,7 @@ class MainActivity : FlutterActivity() {
                 }
                 fallbackToneGenerator = null
             } catch (e: Exception) {
+                voiceMediaPlayer = null
                 sirenAudioTrack = null
                 fallbackToneGenerator = null
             }
