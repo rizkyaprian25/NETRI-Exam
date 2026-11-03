@@ -10,7 +10,7 @@ credentials.json
 service-account.json
 
 # ==============================================================================
-# 2. Direktori & Metadata AI Internal (Internal Shield)
+# 2. Direktori & Metadata AI Internal & Video Demo (Internal Shield)
 # ==============================================================================
 .agents/
 .gemini/
@@ -22,6 +22,11 @@ SoftwareEngineer.md
 VIDEO_DEMO.md
 implementation_plan.md
 walkthrough.md
+remotion-video/
+temp_video/
+*.mp4
+*.webm
+*.mov
 
 # ==============================================================================
 # 3. Kunci Seluruh File Markdown KECUALI README.md (Clean Remote Shield)
