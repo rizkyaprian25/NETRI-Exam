@@ -35,9 +35,10 @@ class MainActivity : FlutterActivity() {
     private val STARTUP_GRACE_PERIOD_MS = 3000L
     private val PIN_DIALOG_GRACE_MS = 5000L
 
-    // Status sematkan layar (Lock Task)
+    // Status sematkan layar (Lock Task) dan mode navigasi
     private var wasPinnedOnce = false
     private var lastReportedPinned: Boolean? = null
+    private var lastReportedThreeButton: Boolean? = null
 
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var originalMusicVolume: Int = -1
@@ -71,8 +72,8 @@ class MainActivity : FlutterActivity() {
                 if (pinnedNow) {
                     wasPinnedOnce = true
                 } else if (wasPinnedOnce && !isInPinDialogGracePeriod()) {
-                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara 5 detik
-                    startAlarmSound(5000L)
+                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara terus-menerus
+                    startAlarmSound(-1L)
                 }
 
                 // Jangan tutup panel status bar saat dialog Sematkan Layar sistem sedang menunggu konfirmasi siswa
@@ -100,7 +101,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "startAlarmSound" -> {
-                    val durationMs = (call.argument<Int>("durationMs") ?: 5000).toLong()
+                    val durationMs = (call.argument<Int>("durationMs") ?: -1).toLong()
                     startAlarmSound(durationMs)
                     result.success(true)
                 }
@@ -123,7 +124,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "isThreeButtonNavigation" -> {
-                    result.success(true) // Izinkan semua mode secara ramah tanpa memblokir
+                    result.success(isThreeButtonNavigation())
                 }
                 "openNavigationSettings" -> {
                     openSecuritySettingsForPinning()
@@ -213,11 +214,43 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Mengirim status pinned ke Flutter
+    // Mendeteksi apakah HP menggunakan Navigasi Mode Tombol (3-Button) atau Mode Gestur (Gesture)
+    private fun isThreeButtonNavigation(): Boolean {
+        try {
+            // Android standar (API 29+): 0 = 3-button, 1 = 2-button, 2 = gesture
+            val navMode = Settings.Secure.getInt(contentResolver, "navigation_mode", -1)
+            if (navMode == 2) return false
+
+            // Xiaomi MIUI / HyperOS (force_fsg_nav_bar == 1 berarti mode gestur)
+            val miui = Settings.Global.getInt(contentResolver, "force_fsg_nav_bar", 0)
+            if (miui == 1) return false
+
+            // Vivo FuntouchOS (navigation_gesture_on != 0 berarti mode gestur)
+            val vivo = Settings.Secure.getInt(contentResolver, "navigation_gesture_on", 0)
+            if (vivo != 0) return false
+
+            // Huawei EMUI (navigationbar_is_min == 1 berarti mode gestur)
+            val huawei = Settings.Global.getInt(contentResolver, "navigationbar_is_min", 0)
+            if (huawei == 1) return false
+
+            // Oppo / Realme ColorOS (hide_navigationbar_enable == 2 atau 3 berarti mode gestur)
+            val oppo = Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0)
+            if (oppo == 2 || oppo == 3) return false
+
+            // Fallback resource sistem Android
+            val resId = resources.getIdentifier("config_navBarInteractionMode", "integer", "android")
+            if (resId > 0 && resources.getInteger(resId) == 2) return false
+        } catch (e: Exception) {}
+        return true
+    }
+
+    // Mengirim status pinned dan mode tombol ke Flutter
     private fun notifyFlutterStateIfChanged() {
         val pinned = isInLockTaskMode()
-        if (pinned != lastReportedPinned) {
+        val threeButton = isThreeButtonNavigation()
+        if (pinned != lastReportedPinned || threeButton != lastReportedThreeButton) {
             lastReportedPinned = pinned
+            lastReportedThreeButton = threeButton
             runOnUiThread {
                 try {
                     methodChannel?.invokeMethod(
@@ -225,7 +258,7 @@ class MainActivity : FlutterActivity() {
                         mapOf(
                             "isPinned" to pinned,
                             "isObscured" to false,
-                            "isGestureMode" to false
+                            "isThreeButton" to threeButton
                         )
                     )
                 } catch (e: Exception) {}
@@ -494,14 +527,17 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // Hentikan otomatis tepat setelah durasi tertentu (5 detik)
-                alarmTimerRunnable = Runnable {
-                    stopAlarmSound()
+                // Hentikan otomatis HANYA jika durationMs > 0
+                // Jika durationMs <= 0 (misal -1L), alarm berteriak terus-menerus tanpa henti sampai tombol ditekan
+                if (durationMs > 0) {
+                    alarmTimerRunnable = Runnable {
+                        stopAlarmSound()
+                    }
+                    mainHandler.postDelayed(alarmTimerRunnable!!, durationMs)
                 }
-                mainHandler.postDelayed(alarmTimerRunnable!!, durationMs)
 
             } catch (e: Exception) {
-                playFallbackTone(durationMs)
+                playFallbackTone(if (durationMs > 0) durationMs else 5000L)
             }
         }
     }
@@ -636,7 +672,7 @@ class MainActivity : FlutterActivity() {
         super.onUserLeaveHint()
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
-                startAlarmSound(5000L)
+                startAlarmSound(-1L)
                 methodChannel?.invokeMethod("onUserLeaveHint", null)
             }
         }
@@ -646,7 +682,7 @@ class MainActivity : FlutterActivity() {
         super.onPause()
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
-                startAlarmSound(5000L)
+                startAlarmSound(-1L)
             }
         }
     }

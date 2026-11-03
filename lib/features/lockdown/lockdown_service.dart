@@ -28,7 +28,7 @@ class LockdownService {
   // Callback ke antarmuka ujian (untuk menampilkan dialog strike / lock / tirai pelindung)
   void Function(int strikeCount, String reason)? onStrikeTriggered;
   void Function()? onLockRequired;
-  void Function(bool isPinned, bool isObscured, bool isGestureMode)? onLockStateChanged;
+  void Function(bool isPinned, bool isObscured, bool isThreeButton)? onLockStateChanged;
 
   Future<void> _handleNativeCall(MethodCall call) async {
     if (!_isLockdownActive) return;
@@ -49,13 +49,13 @@ class LockdownService {
         await recordOverlayDetected(reason: reason);
         break;
       case 'onLockStateChanged':
-        // Pembaruan status Sematkan Layar (Lock Task), tertutup floating window, dan mode gerakan (Gesture)
+        // Pembaruan status Sematkan Layar (Lock Task), tertutup floating window, dan Mode 3 Tombol
         final args = call.arguments;
         if (args is Map) {
           final isPinned = args['isPinned'] == true;
           final isObscured = args['isObscured'] == true;
-          final isGestureMode = args['isGestureMode'] == true;
-          onLockStateChanged?.call(isPinned, isObscured, isGestureMode);
+          final isThreeButton = args['isThreeButton'] == true;
+          onLockStateChanged?.call(isPinned, isObscured, isThreeButton);
         }
         break;
       default:
@@ -144,8 +144,8 @@ class LockdownService {
     } catch (_) {}
   }
 
-  /// Membunyikan suara alarm sirine peringatan keras (bawaan 5 detik)
-  Future<void> startAlarmSound({int durationMs = 5000}) async {
+  /// Membunyikan suara alarm teriakan keras (bawaan: -1 / non-stop sampai tombol kembali ditekan)
+  Future<void> startAlarmSound({int durationMs = -1}) async {
     try {
       await _channel.invokeMethod('startAlarmSound', {'durationMs': durationMs});
     } catch (_) {}

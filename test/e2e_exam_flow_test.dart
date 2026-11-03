@@ -114,11 +114,11 @@ void main() {
         await widgetsAppState.didPopRoute();
         await tester.pumpAndSettle();
 
-        // Pastikan dialog Dilarang Keluar muncul dan sirine 5000ms dipanggil
+        // Pastikan dialog Dilarang Keluar muncul dan sirine non-stop dipanggil
         expect(find.text('Dilarang Keluar!'), findsOneWidget);
-        expect(find.text('Alarm suara "Aku Nyontek!" aktif selama 5 detik!'), findsOneWidget);
+        expect(find.text('Alarm suara "Aku Nyontek!" berbunyi terus sampai Anda kembali ke ujian!'), findsOneWidget);
         expect(channelCallLog, contains('startAlarmSound'));
-        expect(channelArguments['durationMs'], equals(5000));
+        expect(channelArguments['durationMs'], equals(-1));
 
         // Pastikan TIDAK ADA tombol keluar di dialog back
         expect(find.text('Sudah Selesai, Keluar Ujian'), findsNothing);
@@ -319,13 +319,88 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Mode Gerakan: Masuk Ujian Langsung Mulus Tanpa Peringatan Palsu Saat Scroll & Alarm Bunyi 5 Detik Saat Keluar',
+      'Skenario Mode Tombol: Wajib Konfirmasi Sematkan Layar (Pilih Lain Kali Tetap Ditutup Tirai Sampai Di-Pin)',
+      (WidgetTester tester) async {
+        bool mockPinned = false;
+        bool mockScreenClear = true;
+
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('com.netri.exam/lockdown'),
+          (MethodCall methodCall) async {
+            channelCallLog.add(methodCall.method);
+            if (methodCall.method == 'isThreeButtonNavigation') {
+              return true; // Mode 3 Tombol aktif
+            }
+            if (methodCall.method == 'isLockTaskActive') {
+              return mockPinned;
+            }
+            if (methodCall.method == 'checkScreenClear') {
+              return mockScreenClear;
+            }
+            if (methodCall.method == 'requestLockTask') {
+              mockPinned = true;
+              return true;
+            }
+            return true;
+          },
+        );
+
+        await tester.pumpWidget(const NetriExamApp());
+        await tester.pumpAndSettle();
+
+        final urlField = find.byType(TextField).first;
+        await tester.enterText(urlField, 'https://forms.gle/buttonModePinTest123');
+
+        final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        final confirmStartButton = find.widgetWithText(
+          ElevatedButton,
+          'Saya Siap & Mulai Mengerjakan',
+        );
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+
+        // 1. Pada mode tombol, jika siswa belum menyematkan layar (pilih Lain Kali / mockPinned = false),
+        // Tirai Pelindung WAJIB menutupi lembar soal
+        expect(
+          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          findsOneWidget,
+        );
+        final lockTaskButton = find.widgetWithText(
+          ElevatedButton,
+          'Kunci Layar & Mulai Ujian',
+        );
+        expect(lockTaskButton, findsOneWidget);
+
+        // 2. Siswa menekan 'Kunci Layar & Mulai Ujian' dan mengonfirmasi sematkan layar (mockPinned = true)
+        await tester.tap(lockTaskButton);
+        await tester.pumpAndSettle();
+
+        expect(channelCallLog, contains('requestLockTask'));
+        // Tirai pelindung terbuka dan lembar soal tampil
+        expect(
+          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Skenario Mode Gestur: Masuk Langsung Tanpa Tirai & Saat Keluar Alarm Berbunyi Non-Stop (-1)',
       (WidgetTester tester) async {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
           const MethodChannel('com.netri.exam/lockdown'),
           (MethodCall methodCall) async {
             channelCallLog.add(methodCall.method);
+            if (methodCall.method == 'isThreeButtonNavigation') {
+              return false; // Mode Gestur
+            }
             if (methodCall.arguments is Map) {
               channelArguments.addAll(
                 Map<String, dynamic>.from(methodCall.arguments as Map),
@@ -339,15 +414,12 @@ void main() {
         await tester.pumpAndSettle();
 
         final urlField = find.byType(TextField).first;
-        await tester.enterText(urlField, 'https://forms.gle/gestureNaturalTest123');
+        await tester.enterText(urlField, 'https://forms.gle/gestureNonStopTest123');
 
-        // 1. Siswa langsung klik Mulai Ujian
+        // 1. Siswa di Mode Gestur langsung klik Mulai Ujian
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
-
-        // Konfirmasi awal muncul dengan lancar
-        expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
 
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
@@ -356,12 +428,11 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        // Masuk ke ruang ujian
+        // Di Mode Gestur, lembar soal langsung tampil tanpa terhalang tirai sematan palsu
         expect(find.byType(ExamSessionScreen), findsOneWidget);
-        expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
-        expect(find.text('Dilarang Keluar!'), findsNothing);
+        expect(find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'), findsNothing);
 
-        // 2. Siswa mencoba keluar / beralih aplikasi di Mode Gerakan
+        // 2. Siswa melakukan usap keluar / beralih aplikasi di Mode Gestur
         await tester.pump(const Duration(seconds: 6));
         LockdownService().expireStartupGracePeriodForTesting();
 
@@ -370,11 +441,12 @@ void main() {
         await LockdownService().handleAppResignedActive();
         await tester.pumpAndSettle();
 
-        // Alarm berteriak 5 detik dan dialog peringatan muncul
+        // Alarm berteriak non-stop (durationMs: -1) dan dialog peringatan muncul
         expect(channelCallLog, contains('startAlarmSound'));
+        expect(channelArguments['durationMs'], equals(-1));
         expect(find.byType(LockScreenDialog), findsOneWidget);
 
-        // Siswa mengakui dan kembali ke lembar ujian
+        // Siswa mengakui dan kembali ke lembar ujian -> stopAlarmSound dipanggil
         final acknowledgeButton = find.widgetWithText(
           ElevatedButton,
           'Saya Mengerti, Kembali ke Ujian',
@@ -382,6 +454,7 @@ void main() {
         await tester.tap(acknowledgeButton);
         await tester.pumpAndSettle();
 
+        expect(channelCallLog, contains('stopAlarmSound'));
         expect(find.byType(LockScreenDialog), findsNothing);
       },
     );

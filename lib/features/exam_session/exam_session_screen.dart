@@ -31,7 +31,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   ConnectionStatus _connectionStatus = ConnectionStatus.connected;
   bool _isLockDialogShowing = false;
   bool _isExamCompleted = false;
+  bool _isPinned = true;
   bool _isObscured = false;
+  bool _isThreeButtonMode = true;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -57,19 +59,29 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
-    // Pantau perubahan status jendela mengambang (Floating Apps / Split Screen)
-    lockdown.onLockStateChanged = (bool isPinned, bool isObscured, bool isGestureMode) {
+    // Verifikasi awal status Sematkan Layar, Mode Tombol, dan kebersihan layar
+    lockdown.isLockTaskActive().then((pinned) {
       if (!mounted) return;
-      setState(() {
-        _isObscured = isObscured;
-      });
-    };
-
-    // Verifikasi awal kebersihan layar
+      setState(() => _isPinned = pinned);
+    });
+    lockdown.isThreeButtonNavigation().then((threeButton) {
+      if (!mounted) return;
+      setState(() => _isThreeButtonMode = threeButton);
+    });
     lockdown.checkScreenClear().then((clear) {
       if (!mounted) return;
       setState(() => _isObscured = !clear);
     });
+
+    // Pantau perubahan status Sematkan Layar, Mode Tombol, dan jendela mengambang
+    lockdown.onLockStateChanged = (bool isPinned, bool isObscured, bool isThreeButton) {
+      if (!mounted) return;
+      setState(() {
+        _isPinned = isPinned;
+        _isObscured = isObscured;
+        _isThreeButtonMode = isThreeButton;
+      });
+    };
 
     lockdown.onLockRequired = () {
       if (!mounted || _isLockDialogShowing) return;
@@ -219,10 +231,10 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Dialog peringatan saat ada upaya keluar dari ujian lewat tombol kembali (Sirine 5 Detik)
+  /// Dialog peringatan saat ada upaya keluar dari ujian lewat tombol kembali (Suara Non-Stop)
   void _onBackButtonPressed() {
-    // Bunyikan sirine peringatan 5 detik saat mencoba menekan tombol kembali
-    LockdownService().startAlarmSound(durationMs: 5000);
+    // Bunyikan suara peringatan terus-menerus sampai tombol kembali ke ujian ditekan
+    LockdownService().startAlarmSound(durationMs: -1);
 
     showDialog(
       context: context,
@@ -260,7 +272,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Alarm suara "Aku Nyontek!" aktif selama 5 detik!',
+                      'Alarm suara "Aku Nyontek!" berbunyi terus sampai Anda kembali ke ujian!',
                       style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -420,16 +432,20 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       );
     }
 
+    final bool shouldShowCurtain = _isObscured || (_isThreeButtonMode && !_isPinned);
+
     return Stack(
       children: [
         content,
-        if (_isObscured) _buildSecurityCurtain(),
+        if (shouldShowCurtain) _buildSecurityCurtain(),
       ],
     );
   }
 
-  /// Tirai pelindung saat aplikasi mengambang / split-screen terdeteksi
+  /// Tirai pelindung saat aplikasi mengambang terdeteksi atau mode tombol belum disematkan
   Widget _buildSecurityCurtain() {
+    final bool isPinRequired = _isThreeButtonMode && !_isPinned;
+
     return Positioned.fill(
       child: Material(
         color: const Color(0xFF141824),
@@ -459,9 +475,11 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       ),
                     ),
                     const SizedBox(height: NetriSpacing.space4),
-                    const Text(
-                      'Aplikasi Mengambang (Floating App) Terdeteksi!',
-                      style: TextStyle(
+                    Text(
+                      isPinRequired
+                          ? 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'
+                          : 'Aplikasi Mengambang (Floating App) Terdeteksi!',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 19,
                         fontWeight: FontWeight.bold,
@@ -469,10 +487,11 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: NetriSpacing.space3),
-                    const Text(
-                      'Lembar soal disembunyikan karena terdeteksi jendela mengambang atau split-screen aktif di layar. '
-                      'Tutup semua jendela mengambang lalu tekan tombol di bawah untuk melanjutkan ujian.',
-                      style: TextStyle(
+                    Text(
+                      isPinRequired
+                          ? 'Pada mode tombol, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar tombol Home dan Recent terkunci penuh selama ujian.'
+                          : 'Lembar soal disembunyikan karena terdeteksi jendela mengambang atau split-screen aktif di layar. Tutup semua jendela mengambang lalu tekan tombol di bawah untuk melanjutkan ujian.',
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13.5,
                         height: 1.45,
@@ -489,19 +508,47 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                           borderRadius: BorderRadius.circular(NetriRadius.md),
                         ),
                       ),
-                      icon: const Icon(Icons.refresh_rounded, size: 20),
-                      label: const Text(
-                        'Periksa Ulang Layar & Lanjut',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      icon: Icon(isPinRequired ? Icons.lock_rounded : Icons.refresh_rounded, size: 20),
+                      label: Text(
+                        isPinRequired ? 'Kunci Layar & Mulai Ujian' : 'Periksa Ulang Layar & Lanjut',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
-                        final clear = await LockdownService().checkScreenClear();
-                        if (!mounted) return;
-                        setState(() {
-                          _isObscured = !clear;
-                        });
+                        if (isPinRequired) {
+                          final pinned = await LockdownService().requestLockTask();
+                          final clear = await LockdownService().checkScreenClear();
+                          if (!mounted) return;
+                          setState(() {
+                            _isPinned = pinned;
+                            _isObscured = !clear;
+                          });
+                        } else {
+                          final clear = await LockdownService().checkScreenClear();
+                          if (!mounted) return;
+                          setState(() {
+                            _isObscured = !clear;
+                          });
+                        }
                       },
                     ),
+                    if (isPinRequired) ...[
+                      const SizedBox(height: NetriSpacing.space2),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white30),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(NetriRadius.md),
+                          ),
+                        ),
+                        icon: const Icon(Icons.settings_rounded, size: 18),
+                        label: const Text('Buka Pengaturan Sematkan Layar'),
+                        onPressed: () {
+                          LockdownService().openSecuritySettings();
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
