@@ -23,13 +23,13 @@ class LockScreenDialog extends StatefulWidget {
 }
 
 class _LockScreenDialogState extends State<LockScreenDialog> {
-  int _secondsLeft = 5;
+  int _secondsLeft = 15;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    // Hitung mundur visual sirine 5 detik
+    // Hitung mundur visual alarm 15 detik
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
       setState(() {

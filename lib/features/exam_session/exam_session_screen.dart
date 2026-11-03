@@ -227,8 +227,8 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
 
   /// Dialog peringatan saat ada upaya keluar dari ujian lewat tombol kembali (Suara Non-Stop)
   void _onBackButtonPressed() {
-    // Bunyikan suara peringatan terus-menerus sampai tombol kembali ke ujian ditekan
-    LockdownService().startAlarmSound(durationMs: -1);
+    // Bunyikan suara peringatan selama 15 detik saat tombol kembali ditekan
+    LockdownService().startAlarmSound(durationMs: 15000);
 
     showDialog(
       context: context,
@@ -266,7 +266,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Alarm suara "Aku Nyontek!" berbunyi terus sampai Anda kembali ke ujian!',
+                      'Alarm suara "Aku Nyontek!" berbunyi keras selama 15 detik!',
                       style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),

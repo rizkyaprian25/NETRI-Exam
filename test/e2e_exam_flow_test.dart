@@ -114,11 +114,11 @@ void main() {
         await widgetsAppState.didPopRoute();
         await tester.pumpAndSettle();
 
-        // Pastikan dialog Dilarang Keluar muncul dan sirine non-stop dipanggil
+        // Pastikan dialog Dilarang Keluar muncul dan alarm 15 detik dipanggil
         expect(find.text('Dilarang Keluar!'), findsOneWidget);
-        expect(find.text('Alarm suara "Aku Nyontek!" berbunyi terus sampai Anda kembali ke ujian!'), findsOneWidget);
+        expect(find.text('Alarm suara "Aku Nyontek!" berbunyi keras selama 15 detik!'), findsOneWidget);
         expect(channelCallLog, contains('startAlarmSound'));
-        expect(channelArguments['durationMs'], equals(-1));
+        expect(channelArguments['durationMs'], equals(15000));
 
         // Pastikan TIDAK ADA tombol keluar di dialog back
         expect(find.text('Sudah Selesai, Keluar Ujian'), findsNothing);
@@ -455,9 +455,9 @@ void main() {
         await LockdownService().handleAppResignedActive();
         await tester.pumpAndSettle();
 
-        // Alarm berteriak non-stop (durationMs: -1) dan dialog peringatan muncul
+        // Alarm berteriak 15 detik (durationMs: 15000) dan dialog peringatan muncul
         expect(channelCallLog, contains('startAlarmSound'));
-        expect(channelArguments['durationMs'], equals(-1));
+        expect(channelArguments['durationMs'], equals(15000));
         expect(find.byType(LockScreenDialog), findsOneWidget);
 
         // Siswa mengakui dan kembali ke lembar ujian -> stopAlarmSound dipanggil

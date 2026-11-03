@@ -75,8 +75,8 @@ class MainActivity : FlutterActivity() {
                 if (pinnedNow) {
                     wasPinnedOnce = true
                 } else if (wasPinnedOnce && !isInPinDialogGracePeriod()) {
-                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara terus-menerus
-                    startAlarmSound(-1L)
+                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara selama 15 detik
+                    startAlarmSound(15000L)
                 }
 
                 // Jangan tutup panel status bar saat dialog Sematkan Layar sistem sedang menunggu konfirmasi siswa
@@ -104,7 +104,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "startAlarmSound" -> {
-                    val durationMs = (call.argument<Int>("durationMs") ?: -1).toLong()
+                    val durationMs = (call.argument<Int>("durationMs") ?: 15000).toLong()
                     startAlarmSound(durationMs)
                     result.success(true)
                 }
@@ -441,8 +441,8 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {}
     }
 
-    // Memutar alarm suara "Aku Nyontek!" selama durasi tertentu (bawaan: 5 detik)
-    private fun startAlarmSound(durationMs: Long = 5000L) {
+    // Memutar alarm suara "Aku Nyontek!" selama durasi tertentu (bawaan: 15 detik)
+    private fun startAlarmSound(durationMs: Long = 15000L) {
         runOnUiThread {
             try {
                 // Jika sedang berputar, biarkan bunyi hingga selesai durasi tanpa di-restart berulang
@@ -669,7 +669,7 @@ class MainActivity : FlutterActivity() {
                 if (!isInPinDialogGracePeriod()) {
                     collapseStatusBar()
                     if (!isInStartupGracePeriod()) {
-                        startAlarmSound(-1L)
+                        startAlarmSound(15000L)
                     }
                 }
             } else {
@@ -687,7 +687,7 @@ class MainActivity : FlutterActivity() {
         isTopResumed = isTopResumedActivity
         if (isLockdownActive && !isTopResumedActivity) {
             if (!isInStartupGracePeriod() && !isInPinDialogGracePeriod()) {
-                startAlarmSound(-1L)
+                startAlarmSound(15000L)
             }
         }
         notifyFlutterStateIfChanged()
@@ -697,7 +697,7 @@ class MainActivity : FlutterActivity() {
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         if (isLockdownActive && isInMultiWindowMode) {
-            startAlarmSound(-1L)
+            startAlarmSound(15000L)
         }
         notifyFlutterStateIfChanged()
     }
@@ -707,7 +707,7 @@ class MainActivity : FlutterActivity() {
         super.onUserLeaveHint()
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
-                startAlarmSound(-1L)
+                startAlarmSound(15000L)
                 methodChannel?.invokeMethod("onUserLeaveHint", null)
             }
         }
@@ -717,7 +717,7 @@ class MainActivity : FlutterActivity() {
         super.onPause()
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
-                startAlarmSound(-1L)
+                startAlarmSound(15000L)
             }
         }
     }
