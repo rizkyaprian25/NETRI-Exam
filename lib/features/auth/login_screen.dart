@@ -141,32 +141,136 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        final now = DateTime.now();
-        final session = ActiveExamSession(
-          sessionId: 'ses_${now.millisecondsSinceEpoch}',
-          formUrl: rawUrl,
-          deadlineAt: now.add(const Duration(hours: 12)),
-          durationMinutes: 0,
-          serverCurrentTime: now,
-          allowedDomains: const [
-            'docs.google.com',
-            'forms.google.com',
-            'google.com',
-            'gstatic.com',
-            'googleusercontent.com',
-            'forms.gle',
-          ],
-          proctorPin: '', // Tanpa PIN
-          mapel: 'Ujian Google Form',
-          kelas: 'Umum',
-        );
+        // Lapis 2: Wajib sematkan aplikasi sebelum mulai ujian
+        await LockdownService().requestLockTask();
+        final isPinned = await LockdownService().isLockTaskActive();
+        if (!mounted) return;
 
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ExamSessionScreen(session: session),
-          ),
-        );
+        if (!isPinned) {
+          setState(() {
+            _errorMessage =
+                'Ujian tidak dapat dimulai karena Anda belum menyematkan aplikasi! '
+                'Harap pilih "Sematkan / Aktifkan" pada konfirmasi sistem Android.';
+          });
+          _showPinRequiredDialog(formUrl: rawUrl);
+          return;
+        }
+
+        _proceedToExam(rawUrl);
       },
+    );
+  }
+
+  /// Dialog peringatan saat siswa belum menyematkan aplikasi sebelum mulai ujian
+  void _showPinRequiredDialog({required String formUrl}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(NetriRadius.lg),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.phonelink_lock_rounded, color: Colors.redAccent, size: 26),
+            SizedBox(width: NetriSpacing.space2),
+            Expanded(
+              child: Text(
+                'Wajib Sematkan Layar!',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.redAccent),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Ujian tidak dapat dimulai karena Anda belum menyematkan aplikasi (atau memilih "Lain kali").',
+              style: TextStyle(fontSize: 13, height: 1.4, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: NetriSpacing.space3),
+            Container(
+              padding: const EdgeInsets.all(NetriSpacing.space3),
+              decoration: BoxDecoration(
+                color: Colors.red.withAlpha(20),
+                borderRadius: BorderRadius.circular(NetriRadius.sm),
+                border: Border.all(color: Colors.red.withAlpha(60)),
+              ),
+              child: const Text(
+                'Anda WAJIB memilih "Sematkan / Aktifkan" pada konfirmasi sistem Android agar seluruh tombol dan aplikasi lain terkunci penuh selama ujian.',
+                style: TextStyle(fontSize: 12, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Batal'),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.settings_rounded, size: 16),
+            label: const Text('Pengaturan'),
+            onPressed: () => LockdownService().openSecuritySettings(),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: NetriColors.brandLight,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.lock_rounded, size: 18),
+            label: const Text('Sematkan Sekarang'),
+            onPressed: () async {
+              Navigator.of(dialogCtx).pop();
+              await LockdownService().requestLockTask();
+              final isPinned = await LockdownService().isLockTaskActive();
+              if (!mounted) return;
+              if (isPinned) {
+                _proceedToExam(formUrl);
+              } else {
+                setState(() {
+                  _errorMessage =
+                      'Ujian tidak dapat dimulai karena Anda belum menyematkan aplikasi! '
+                      'Harap pilih "Sematkan / Aktifkan" pada konfirmasi sistem Android.';
+                });
+                _showPinRequiredDialog(formUrl: formUrl);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Memulai sesi ujian dan berpindah ke ExamSessionScreen
+  void _proceedToExam(String formUrl) {
+    setState(() => _errorMessage = null);
+    final now = DateTime.now();
+    final session = ActiveExamSession(
+      sessionId: 'ses_${now.millisecondsSinceEpoch}',
+      formUrl: formUrl,
+      deadlineAt: now.add(const Duration(hours: 12)),
+      durationMinutes: 0,
+      serverCurrentTime: now,
+      allowedDomains: const [
+        'docs.google.com',
+        'forms.google.com',
+        'google.com',
+        'gstatic.com',
+        'googleusercontent.com',
+        'forms.gle',
+      ],
+      proctorPin: '', // Tanpa PIN
+      mapel: 'Ujian Google Form',
+      kelas: 'Umum',
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ExamSessionScreen(session: session),
+      ),
     );
   }
 
@@ -214,6 +318,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
               const SizedBox(height: NetriSpacing.space4),
+
+              // Notifikasi Peringatan Sematkan Layar Sebelum Ujian Dimulai
+              Container(
+                padding: const EdgeInsets.all(NetriSpacing.space3),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withAlpha(25),
+                  borderRadius: BorderRadius.circular(NetriRadius.sm),
+                  border: Border.all(color: Colors.amber.shade700.withAlpha(80)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.phonelink_lock_rounded, color: Colors.amber, size: 22),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Wajib Sematkan Layar: Anda harus memilih "Sematkan / Aktifkan" pada konfirmasi sistem Android. Jika memilih "Lain kali", Anda tidak bisa memulai ujian!',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: NetriSpacing.space3),
 
               const Text(
                 'Peraturan Ujian:',

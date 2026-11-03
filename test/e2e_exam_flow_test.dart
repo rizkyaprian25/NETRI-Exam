@@ -304,7 +304,7 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Mode Tombol: Wajib Konfirmasi Sematkan Layar (Pilih Lain Kali Tetap Ditutup Tirai Sampai Di-Pin)',
+      'Skenario Mode Tombol: Wajib Konfirmasi Sematkan Layar Sebelum Mulai Ujian (Pilih Lain Kali Ditolak)',
       (WidgetTester tester) async {
         bool mockPinned = false;
         bool mockScreenClear = true;
@@ -324,8 +324,7 @@ void main() {
               return mockScreenClear;
             }
             if (methodCall.method == 'requestLockTask') {
-              mockPinned = true;
-              return true;
+              return mockPinned;
             }
             return true;
           },
@@ -341,6 +340,9 @@ void main() {
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
+        // 1. Notifikasi sematkan layar muncul di lembar konfirmasi sebelum mulai ujian
+        expect(find.textContaining('Wajib Sematkan Layar: Anda harus memilih "Sematkan / Aktifkan"'), findsOneWidget);
+
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
           'Saya Siap & Mulai Mengerjakan',
@@ -348,35 +350,28 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        // Karena mockPinned = false, sistem menampilkan peringatan Wajib Sematkan Layar dan menolak masuk
+        expect(find.text('Wajib Sematkan Layar!'), findsOneWidget);
+        expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 1. Pada mode tombol, jika siswa belum menyematkan layar (pilih Lain Kali / mockPinned = false),
-        // Tirai Pelindung WAJIB menutupi lembar soal
-        expect(
-          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
-          findsOneWidget,
-        );
-        final lockTaskButton = find.widgetWithText(
+        // 2. Siswa mengonfirmasi sematkan layar (mockPinned menjadi true) dan menekan 'Sematkan Sekarang'
+        mockPinned = true;
+        final pinNowButton = find.widgetWithText(
           ElevatedButton,
-          'Kunci Layar & Mulai Ujian',
+          'Sematkan Sekarang',
         );
-        expect(lockTaskButton, findsOneWidget);
-
-        // 2. Siswa menekan 'Kunci Layar & Mulai Ujian' dan mengonfirmasi sematkan layar (mockPinned = true)
-        await tester.tap(lockTaskButton);
+        expect(pinNowButton, findsOneWidget);
+        await tester.tap(pinNowButton);
         await tester.pumpAndSettle();
 
         expect(channelCallLog, contains('requestLockTask'));
-        // Tirai pelindung terbuka dan lembar soal tampil
-        expect(
-          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
-          findsNothing,
-        );
+        // Siswa berhasil masuk ke ExamSessionScreen setelah menyematkan layar
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
       },
     );
 
     testWidgets(
-      'Skenario Mode Gestur: Wajib Sematkan Layar (Agar Tidak Bisa Buka Aplikasi Lain) & Saat Keluar Alarm Non-Stop (-1)',
+      'Skenario Mode Gestur: Wajib Sematkan Layar Sebelum Mulai Ujian & Saat Keluar Alarm 15 Detik',
       (WidgetTester tester) async {
         bool mockPinned = false;
 
@@ -392,8 +387,7 @@ void main() {
               return mockPinned;
             }
             if (methodCall.method == 'requestLockTask') {
-              mockPinned = true;
-              return true;
+              return mockPinned;
             }
             if (methodCall.arguments is Map) {
               channelArguments.addAll(
@@ -415,6 +409,8 @@ void main() {
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
+        expect(find.textContaining('Wajib Sematkan Layar: Anda harus memilih "Sematkan / Aktifkan"'), findsOneWidget);
+
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
           'Saya Siap & Mulai Mengerjakan',
@@ -422,29 +418,22 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        // 2. Di Mode Gestur, jika belum menyematkan layar (mockPinned = false),
+        // Sistem MENOLAK masuk dan menampilkan peringatan Wajib Sematkan Layar
+        expect(find.text('Wajib Sematkan Layar!'), findsOneWidget);
+        expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 2. Di Mode Gestur, jika belum menyematkan layar (pilih Lain Kali / mockPinned = false),
-        // Tirai Pelindung WAJIB tetap menutup soal agar siswa menyematkan layar terlebih dahulu
-        expect(
-          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
-          findsOneWidget,
-        );
-        expect(
-          find.textContaining('Pada mode gestur, Anda wajib menekan "Sematkan / Aktifkan"'),
-          findsOneWidget,
-        );
-
-        final lockTaskButton = find.widgetWithText(
+        mockPinned = true;
+        final pinNowButton = find.widgetWithText(
           ElevatedButton,
-          'Kunci Layar & Mulai Ujian',
+          'Sematkan Sekarang',
         );
-        await tester.tap(lockTaskButton);
+        await tester.tap(pinNowButton);
         await tester.pumpAndSettle();
 
-        // Setelah sematkan layar dikonfirmasi, tirai terbuka
+        // Setelah sematkan layar dikonfirmasi, siswa berhasil masuk ke ExamSessionScreen
         expect(channelCallLog, contains('requestLockTask'));
-        expect(find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'), findsNothing);
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
 
         // 3. Siswa melakukan usap keluar ke Home di Mode Gestur
         await tester.pump(const Duration(seconds: 6));
