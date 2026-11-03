@@ -6,14 +6,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.Rect
 import android.media.AudioAttributes
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.ToneGenerator
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -21,7 +17,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.ActionMode
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -37,80 +32,56 @@ class MainActivity : FlutterActivity() {
     private var isLockdownActive = false
     private var lockdownStartTime: Long = 0L
     private var lastPinRequestTime: Long = 0L
-    private var lastAutoRepinTime: Long = 0L
-    private val STARTUP_GRACE_PERIOD_MS = 5000L
-    private val PIN_DIALOG_GRACE_MS = 6000L
+    private val STARTUP_GRACE_PERIOD_MS = 3000L
+    private val PIN_DIALOG_GRACE_MS = 5000L
 
-    // Status deteksi floating window / overlay, status sematkan layar (Lock Task), dan mode navigasi
-    private var isWindowObscured = false
-    private var isTopResumed = true
+    // Status sematkan layar (Lock Task)
     private var wasPinnedOnce = false
     private var lastReportedPinned: Boolean? = null
-    private var lastReportedObscured: Boolean? = null
-    private var lastReportedGestureMode: Boolean? = null
 
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
 
-    // Media player & AudioTrack untuk memutar alarm suara "Aku Nyontek!" dan sirine darurat
+    // Media player & ToneGenerator untuk memutar alarm suara "Aku Nyontek!"
     private var voiceMediaPlayer: MediaPlayer? = null
-    private var sirenAudioTrack: AudioTrack? = null
     private var fallbackToneGenerator: ToneGenerator? = null
-    private var sirenPcmBuffer: ShortArray? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var alarmTimerRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Reset kondisi awal saat aplikasi baru dipasang/dibuka agar tidak ada sirine aktif
         isLockdownActive = false
         lockdownStartTime = 0L
         lastPinRequestTime = 0L
-        lastAutoRepinTime = 0L
-        isWindowObscured = false
         wasPinnedOnce = false
-        ExamGuardService.isActivityInForeground = true
-        ExamGuardService.stopGuard(this)
         stopAlarmSound()
     }
 
-    // Loop pengawas aktif (setiap 500ms) untuk mengunci kecerahan 100%, volume 100%, gesture exclusion, dan Lock Task
+    // Loop pengawas berkala (setiap 1000ms) untuk mengunci kecerahan 100%, volume 100%, dan memantau status Lock Task
     private val lockdownEnforcerRunnable = object : Runnable {
         override fun run() {
             if (isLockdownActive) {
-                ExamGuardService.isInGracePeriod = isInPinDialogGracePeriod() || isInStartupGracePeriod()
-
                 enforceMaxBrightness()
                 enforceMaxVolume()
                 applyImmersiveMode()
-                applySystemGestureExclusion()
 
                 val pinnedNow = isInLockTaskMode()
                 if (pinnedNow) {
                     wasPinnedOnce = true
-                } else if (!isInPinDialogGracePeriod()) {
-                    if (wasPinnedOnce) {
-                        // Siswa melepas sematan layar (unpin) di tengah ujian: bunyikan alarm "Aku Nyontek!" 5 detik & tarik ke depan
-                        startAlarmSound(5000L)
-                        bringAppToFront()
-                    }
-                    // Paksa penguncian ulang (Auto Re-Pin) secara berkala jika sematan layar terlepas saat jendela fokus
-                    val now = System.currentTimeMillis()
-                    if (hasWindowFocus() && (now - lastAutoRepinTime) > 4500L) {
-                        lastAutoRepinTime = now
-                        requestScreenPinning()
-                    }
+                } else if (wasPinnedOnce && !isInPinDialogGracePeriod()) {
+                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara 5 detik
+                    startAlarmSound(5000L)
                 }
 
-                // Jangan panggil collapseStatusBar saat dialog sistem Sematkan Layar sedang menunggu konfirmasi siswa
+                // Jangan tutup panel status bar saat dialog Sematkan Layar sistem sedang menunggu konfirmasi siswa
                 if (pinnedNow || !isInPinDialogGracePeriod()) {
                     collapseStatusBar()
                 }
 
                 notifyFlutterStateIfChanged()
-                mainHandler.postDelayed(this, 500)
+                mainHandler.postDelayed(this, 1000)
             }
         }
     }
@@ -152,17 +123,16 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "isThreeButtonNavigation" -> {
-                    result.success(isThreeButtonNavigation())
+                    result.success(true) // Izinkan semua mode secara ramah tanpa memblokir
                 }
                 "openNavigationSettings" -> {
-                    openNavigationSettings()
+                    openSecuritySettingsForPinning()
                     result.success(true)
                 }
                 "hasOverlayPermission" -> {
-                    result.success(hasOverlayPermission())
+                    result.success(true)
                 }
                 "requestOverlayPermission" -> {
-                    requestOverlayPermission()
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -170,131 +140,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Mendeteksi apakah HP menggunakan Navigasi Tombol (3-Button / 2-Button) dan BUKAN Mode Gerakan (Gesture)
-    // Mengembalikan false jika HP terdeteksi menggunakan Mode Gerakan (Gesture Navigation) di Android murni maupun OEM (Xiaomi, Oppo, Vivo, Samsung, Huawei)
-    private fun isThreeButtonNavigation(): Boolean {
-        try {
-            // 1. Standar Android 10+ (API 29+): 0 = 3-button, 1 = 2-button, 2 = Gesture Navigation
-            val navMode = Settings.Secure.getInt(contentResolver, "navigation_mode", -1)
-            if (navMode == 2) {
-                return false
-            }
-
-            // 2. Xiaomi MIUI / HyperOS Fullscreen Gestures (force_fsg_nav_bar == 1 berarti mode gerakan aktif)
-            val miuiGesture = Settings.Global.getInt(contentResolver, "force_fsg_nav_bar", 0)
-            if (miuiGesture == 1) {
-                return false
-            }
-
-            // 3. Vivo FuntouchOS / OriginOS (navigation_gesture_on != 0 berarti mode gerakan aktif)
-            val vivoGesture = Settings.Secure.getInt(contentResolver, "navigation_gesture_on", 0)
-            if (vivoGesture != 0) {
-                return false
-            }
-
-            // 4. Huawei / Honor EMUI (navigationbar_is_min == 1 berarti mode gerakan aktif)
-            val huaweiGesture = Settings.Global.getInt(contentResolver, "navigationbar_is_min", 0)
-            if (huaweiGesture == 1) {
-                return false
-            }
-
-            // 5. Oppo / Realme / OnePlus ColorOS (hide_navigationbar_enable == 2 atau 3 berarti gesture aktif)
-            val oppoGesture = Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0)
-            if (oppoGesture == 2 || oppoGesture == 3) {
-                return false
-            }
-
-            // 6. Pemeriksaan cadangan via resource sistem internal Android config_navBarInteractionMode
-            val resId = resources.getIdentifier("config_navBarInteractionMode", "integer", "android")
-            if (resId > 0) {
-                val interactionMode = resources.getInteger(resId)
-                if (interactionMode == 2) {
-                    return false
-                }
-            }
-        } catch (e: Exception) {}
-        return true
-    }
-
-    // Membuka halaman Pengaturan Sistem / Layar agar siswa dapat mengubah Mode Gerakan menjadi Mode Tombol
-    private fun openNavigationSettings() {
-        lastPinRequestTime = System.currentTimeMillis()
-        ExamGuardService.isInGracePeriod = true
-        try {
-            val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-        } catch (e: Exception) {
-            try {
-                startActivity(Intent(Settings.ACTION_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
-            } catch (e2: Exception) {}
-        }
-    }
-
-    // Memeriksa apakah izin "Tampilkan di atas aplikasi lain" (SYSTEM_ALERT_WINDOW) sudah aktif
-    // Izin ini mengizinkan aplikasi menarik paksa layar ujian kembali ke depan pada Android 10+ jika siswa keluar via gesture
-    private fun hasOverlayPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
+    // Memeriksa apakah aplikasi sedang tidak dalam mode split-screen multi window
+    private fun isScreenClear(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            !isInMultiWindowMode
         } else {
             true
         }
     }
 
-    // Membuka halaman izin "Tampilkan di atas aplikasi lain" untuk paket aplikasi ini
-    private fun requestOverlayPermission() {
-        lastPinRequestTime = System.currentTimeMillis()
-        ExamGuardService.isInGracePeriod = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                ).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(intent)
-            } catch (e: Exception) {
-                openSecuritySettingsForPinning()
-            }
-        }
-    }
-
-    // Memblokir area sapuan tepi layar (Left, Right, dan Bottom Gesture Bar) pada Android 10+ (API 29+)
-    // Mencegah gesture back dan swipe-up keluar dari jendela ujian
-    private fun applySystemGestureExclusion() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                val decorView = window.decorView
-                val width = decorView.width
-                val height = decorView.height
-                if (width > 0 && height > 0) {
-                    val edgeWidth = 90
-                    val bottomHeight = 140
-                    val exclusionRects = listOf(
-                        // Area bilah bawah penuh untuk menahan swipe-up home / recent gesture
-                        Rect(0, (height - bottomHeight).coerceAtLeast(0), width, height),
-                        // Area tepi kiri bawah untuk menahan swipe-back gesture
-                        Rect(0, (height - 200).coerceAtLeast(0), edgeWidth, height),
-                        // Area tepi kanan bawah untuk menahan swipe-back gesture
-                        Rect((width - edgeWidth).coerceAtLeast(0), (height - 200).coerceAtLeast(0), width, height)
-                    )
-                    decorView.systemGestureExclusionRects = exclusionRects
-                }
-            } catch (e: Exception) {}
-        }
-    }
-
-    // Memeriksa apakah tidak ada floating app / overlay yang sedang menutupi atau mencuri fokus layar
-    private fun isScreenClear(): Boolean {
-        val multiWindow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
-        return !isWindowObscured && isTopResumed && hasWindowFocus() && !multiWindow
-    }
-
-    // Memeriksa apakah aplikasi sudah berada dalam Lock Task Mode (Pinned atau Device Owner Locked)
+    // Memeriksa apakah aplikasi berada dalam Lock Task Mode (Pinned)
     private fun isInLockTaskMode(): Boolean {
         return try {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -317,24 +172,19 @@ class MainActivity : FlutterActivity() {
         return (System.currentTimeMillis() - lastPinRequestTime) < PIN_DIALOG_GRACE_MS
     }
 
-    // Mengaktifkan paket Lock Task otomatis & mematikan semua navigasi sistem jika perangkat adalah Device Owner sekolah
     private fun configureDeviceOwnerIfAvailable() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, NetriDeviceAdminReceiver::class.java)
             if (dpm.isDeviceOwnerApp(packageName)) {
                 dpm.setLockTaskPackages(adminComponent, arrayOf(packageName))
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    dpm.setLockTaskFeatures(adminComponent, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
-                }
             }
         } catch (e: Exception) {}
     }
 
-    // Meminta sistem Android menyematkan layar (dan otomatis menutup semua floating window freeform saat aktif)
+    // Meminta sematkan layar
     private fun requestScreenPinning() {
         lastPinRequestTime = System.currentTimeMillis()
-        ExamGuardService.isInGracePeriod = true
         runOnUiThread {
             configureDeviceOwnerIfAvailable()
             try {
@@ -342,16 +192,13 @@ class MainActivity : FlutterActivity() {
                     startLockTask()
                 }
             } catch (e: Exception) {}
-            // Periksa ulang status setelah dialog ditampilkan / disetujui
-            mainHandler.postDelayed({ notifyFlutterStateIfChanged() }, 600)
-            mainHandler.postDelayed({ notifyFlutterStateIfChanged() }, 1800)
+            mainHandler.postDelayed({ notifyFlutterStateIfChanged() }, 1000)
         }
     }
 
-    // Membuka pengaturan keamanan Android jika fitur Sematkan Layar di HP siswa masih nonaktif
+    // Membuka pengaturan keamanan Android untuk fitur sematkan layar
     private fun openSecuritySettingsForPinning() {
         lastPinRequestTime = System.currentTimeMillis()
-        ExamGuardService.isInGracePeriod = true
         try {
             val intent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -366,26 +213,19 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Mengirim pembaruan status Lock Task, Obscured, & Mode Gerakan (Gesture) ke Flutter bila terjadi perubahan
+    // Mengirim status pinned ke Flutter
     private fun notifyFlutterStateIfChanged() {
         val pinned = isInLockTaskMode()
-        val obscured = !isScreenClear() && !isInPinDialogGracePeriod()
-        val gestureMode = !isThreeButtonNavigation()
-        if (pinned != lastReportedPinned ||
-            obscured != lastReportedObscured ||
-            gestureMode != lastReportedGestureMode
-        ) {
+        if (pinned != lastReportedPinned) {
             lastReportedPinned = pinned
-            lastReportedObscured = obscured
-            lastReportedGestureMode = gestureMode
             runOnUiThread {
                 try {
                     methodChannel?.invokeMethod(
                         "onLockStateChanged",
                         mapOf(
                             "isPinned" to pinned,
-                            "isObscured" to obscured,
-                            "isGestureMode" to gestureMode
+                            "isObscured" to false,
+                            "isGestureMode" to false
                         )
                     )
                 } catch (e: Exception) {}
@@ -395,17 +235,10 @@ class MainActivity : FlutterActivity() {
 
     private fun enableLockdown() {
         isLockdownActive = true
-        isWindowObscured = false
         wasPinnedOnce = false
         lastReportedPinned = null
-        lastReportedObscured = null
-        lastReportedGestureMode = null
         lockdownStartTime = System.currentTimeMillis()
         lastPinRequestTime = System.currentTimeMillis()
-        lastAutoRepinTime = System.currentTimeMillis()
-        ExamGuardService.isActivityInForeground = true
-        ExamGuardService.isInGracePeriod = true
-        ExamGuardService.startGuard(this, taskId)
 
         runOnUiThread {
             // 1. Blokir tangkapan layar, layar penuh, dan cegah layar mati
@@ -416,7 +249,6 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
 
-            // Hentikan suara apapun yang sebelumnya sempat aktif
             stopAlarmSound()
 
             // Simpan volume awal sebelum dipaksa ke maksimal
@@ -428,32 +260,28 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {}
             }
 
-            // 2. Kecerahan layar maksimal (100% / 1.0f)
+            // 2. Kecerahan layar 100%
             enforceMaxBrightness()
 
-            // 3. Suara / volume maksimal (100%)
+            // 3. Suara / volume 100%
             enforceMaxVolume()
 
-            // 4. Layar penuh immersive sticky & blokir area tepi gesture sistem
+            // 4. Layar penuh immersive sticky
             applyImmersiveMode()
-            applySystemGestureExclusion()
 
-            // 5. Sembunyikan semua overlay jenis SYSTEM_ALERT_WINDOW dari aplikasi lain (Android 12+ / API 31+)
+            // 5. Sembunyikan overlay pada Android 12+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 try {
                     window.setHideOverlayWindows(true)
                 } catch (e: Exception) {}
             }
 
-            // 6. Blokir interaksi sentuhan jika ada aplikasi mengambang yang menutupi layar
-            window.decorView.filterTouchesWhenObscured = true
-
-            // 7. Aktifkan Screen Pinning / Lock Task Mode (tanpa memanggil ACTION_CLOSE_SYSTEM_DIALOGS agar dialog sistem tidak tertutup)
+            // 6. Coba aktifkan Lock Task (Sematkan Layar) jika didukung HP
             requestScreenPinning()
 
-            // 8. Jalankan enforcer berkala
+            // 7. Loop enforcer berkala
             mainHandler.removeCallbacks(lockdownEnforcerRunnable)
-            mainHandler.postDelayed(lockdownEnforcerRunnable, 500)
+            mainHandler.postDelayed(lockdownEnforcerRunnable, 1000)
         }
     }
 
@@ -461,32 +289,18 @@ class MainActivity : FlutterActivity() {
         isLockdownActive = false
         lockdownStartTime = 0L
         lastPinRequestTime = 0L
-        lastAutoRepinTime = 0L
-        isWindowObscured = false
         wasPinnedOnce = false
         lastReportedPinned = null
-        lastReportedObscured = null
-        lastReportedGestureMode = null
-        ExamGuardService.stopGuard(this)
         mainHandler.removeCallbacks(lockdownEnforcerRunnable)
         stopAlarmSound()
 
         runOnUiThread {
-            // Hentikan Screen Pinning / Lock Task bawaan Android
             try {
                 if (isInLockTaskMode()) {
                     stopLockTask()
                 }
             } catch (e: Exception) {}
 
-            // Bersihkan blokir area tepi gesture sistem
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                try {
-                    window.decorView.systemGestureExclusionRects = emptyList()
-                } catch (e: Exception) {}
-            }
-
-            // Kembalikan visibilitas overlay jika sebelumnya disembunyikan
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 try {
                     window.setHideOverlayWindows(false)
@@ -500,14 +314,14 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
 
-            // Kembalikan kecerahan layar ke pengaturan pengguna
+            // Kembalikan kecerahan
             try {
                 val layoutParams = window.attributes
                 layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 window.attributes = layoutParams
             } catch (e: Exception) {}
 
-            // Kembalikan volume jika sebelumnya tersimpan
+            // Kembalikan volume
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             if (originalMusicVolume >= 0) {
                 try {
@@ -521,11 +335,6 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {}
                 originalAlarmVolume = -1
             }
-
-            // Kembalikan filter sentuhan
-            try {
-                window.decorView.filterTouchesWhenObscured = false
-            } catch (e: Exception) {}
 
             // Kembalikan antarmuka normal
             try {
@@ -543,7 +352,7 @@ class MainActivity : FlutterActivity() {
         runOnUiThread {
             try {
                 val layoutParams = window.attributes
-                layoutParams.screenBrightness = 1.0f // Kecerahan 100% penuh
+                layoutParams.screenBrightness = 1.0f
                 window.attributes = layoutParams
             } catch (e: Exception) {}
         }
@@ -553,29 +362,20 @@ class MainActivity : FlutterActivity() {
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-            // Coba buka ringer mode normal tanpa membiarkan kegagalan DND membatalkan volume
             try {
                 if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
                     audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL
                 }
             } catch (e: Exception) {}
 
-            // Paksa volume musik 100%
             try {
                 val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusic, 0)
             } catch (e: Exception) {}
 
-            // Paksa volume alarm 100%
             try {
                 val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
                 audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
-            } catch (e: Exception) {}
-
-            // Paksa volume sistem 100%
-            try {
-                val maxSystem = audioManager.getStreamMaxVolume(AudioManager.STREAM_SYSTEM)
-                audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, maxSystem, 0)
             } catch (e: Exception) {}
         } catch (e: Exception) {}
     }
@@ -599,7 +399,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Menutup paksa laci notifikasi jika siswa mencoba menariknya dari atas
     private fun collapseStatusBar() {
         try {
             val statusBarService = getSystemService("statusbar")
@@ -609,61 +408,21 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {}
     }
 
-    // Menarik kembali aplikasi ke layar paling depan menggunakan moveTaskToFront DAN startActivity ber-flag prioritas
-    // Memanggil keduanya secara berurutan menjamin penarikan instan pada Android 10+ ketika izin Overlay aktif
-    private fun bringAppToFront() {
-        try {
-            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            activityManager.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_NO_USER_ACTION)
-        } catch (e: Exception) {}
-
-        try {
-            val intent = Intent(this, MainActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
-            startActivity(intent)
-        } catch (e: Exception) {}
-    }
-
-    // Menghasilkan 1 gelombang periodik penuh (0.4 detik = 2.5 siklus per detik)
-    // Suara sirine darurat wailing tajam dengan rentang frekuensi 600 Hz - 1400 Hz dan harmonik ke-3
-    private fun getOrCreateSirenBuffer(): ShortArray {
-        sirenPcmBuffer?.let { return it }
-        val sampleRate = 44100
-        val durationSeconds = 0.4 // 400ms per siklus sapuan frekuensi
-        val numSamples = (sampleRate * durationSeconds).toInt() // 17640 sampel
-        val buffer = ShortArray(numSamples)
-
-        val modFreq = 2.5 // Sapuan frekuensi 2.5 siklus per detik
-        val carrierFreq = 1000.0 // Frekuensi tengah 1000 Hz
-        val freqDeviation = 400.0 // Deviasi frekuensi (+- 400 Hz -> rentang 600 Hz s/d 1400 Hz)
-
-        for (i in 0 until numSamples) {
-            val t = i.toDouble() / sampleRate
-            val phase = 2.0 * Math.PI * (carrierFreq * t - (freqDeviation / (2.0 * Math.PI * modFreq)) * Math.sin(2.0 * Math.PI * modFreq * t))
-            val raw = 0.75 * Math.sin(phase) + 0.25 * Math.sin(3.0 * phase)
-            val sample = (raw / 0.85 * 32767.0).toInt().coerceIn(-32768, 32767)
-            buffer[i] = sample.toShort()
-        }
-        sirenPcmBuffer = buffer
-        return buffer
-    }
-
+    // Memutar alarm suara "Aku Nyontek!" selama durasi tertentu (bawaan: 5 detik)
     private fun startAlarmSound(durationMs: Long = 5000L) {
         runOnUiThread {
             try {
-                enforceMaxVolume()
+                // Jika sedang berputar, biarkan bunyi hingga selesai durasi tanpa di-restart berulang
+                if (voiceMediaPlayer?.isPlaying == true) {
+                    return@runOnUiThread
+                }
 
-                // Hentikan pemutaran sebelumnya jika masih aktif
+                enforceMaxVolume()
                 stopAlarmSound()
 
                 var playedVoice = false
 
-                // Cara 1: Putar suara teriakan "Aku Nyontek!" via openRawResourceFd dari res/raw
+                // Cara 1: Putar suara teriakan "Aku Nyontek!" dari res/raw/alarm_nyontek.mp3
                 try {
                     val resId = resources.getIdentifier("alarm_nyontek", "raw", packageName)
                     if (resId != 0) {
@@ -691,7 +450,7 @@ class MainActivity : FlutterActivity() {
                     playedVoice = false
                 }
 
-                // Cara 2: Cadangan Flutter assets flutter_assets/assets/audio/alarm_nyontek.mp3
+                // Cara 2: Cadangan Flutter assets
                 if (!playedVoice) {
                     try {
                         val afd = assets.openFd("flutter_assets/assets/audio/alarm_nyontek.mp3")
@@ -716,7 +475,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // Cara 3: Cadangan MediaPlayer.create langsung (tanpa modifikasi atribut setelah prepare)
+                // Cara 3: Cadangan MediaPlayer.create
                 if (!playedVoice) {
                     try {
                         val resId = resources.getIdentifier("alarm_nyontek", "raw", packageName)
@@ -735,7 +494,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // Hentikan otomatis tepat setelah durasi tertentu (bawaan: 5 detik)
+                // Hentikan otomatis tepat setelah durasi tertentu (5 detik)
                 alarmTimerRunnable = Runnable {
                     stopAlarmSound()
                 }
@@ -774,16 +533,6 @@ class MainActivity : FlutterActivity() {
                 }
                 voiceMediaPlayer = null
 
-                sirenAudioTrack?.let {
-                    try {
-                        if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                            it.stop()
-                        }
-                        it.release()
-                    } catch (e: Exception) {}
-                }
-                sirenAudioTrack = null
-
                 fallbackToneGenerator?.let {
                     try {
                         it.stopTone()
@@ -793,57 +542,12 @@ class MainActivity : FlutterActivity() {
                 fallbackToneGenerator = null
             } catch (e: Exception) {
                 voiceMediaPlayer = null
-                sirenAudioTrack = null
                 fallbackToneGenerator = null
             }
         }
     }
 
-    // Deteksi flag sentuhan yang tertutup oleh floating window / overlay aplikasi lain
-    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (ev != null) {
-            val flags = ev.flags
-            val obscured = (flags and MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0 ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                    (flags and MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED) != 0)
-            if (obscured != isWindowObscured) {
-                isWindowObscured = obscured
-                notifyFlutterStateIfChanged()
-            }
-            if (obscured && isLockdownActive) {
-                startAlarmSound(5000L)
-                methodChannel?.invokeMethod("onObscuredDetected", null)
-                return true
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
-    // Deteksi perubahan status Top Resumed pada Android 10+ (Multi-Resume untuk Freeform Floating Window)
-    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
-        super.onTopResumedActivityChanged(isTopResumedActivity)
-        isTopResumed = isTopResumedActivity
-        ExamGuardService.isActivityInForeground = isTopResumedActivity
-        if (isLockdownActive && !isTopResumedActivity) {
-            if (!isInStartupGracePeriod() && !isInPinDialogGracePeriod()) {
-                startAlarmSound(5000L)
-                bringAppToFront()
-                methodChannel?.invokeMethod("onObscuredDetected", null)
-            }
-        }
-        notifyFlutterStateIfChanged()
-    }
-
-    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
-        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
-        if (isLockdownActive && isInMultiWindowMode) {
-            startAlarmSound(5000L)
-            methodChannel?.invokeMethod("onObscuredDetected", null)
-        }
-        notifyFlutterStateIfChanged()
-    }
-
-    // Menghilangkan opsi "Web Search" dan "Share" saat siswa memilih teks di WebView/aplikasi
+    // Blokir menu Share / Pencarian Web saat siswa memilih teks di soal
     override fun onActionModeStarted(mode: ActionMode?) {
         if (isLockdownActive && mode != null) {
             try {
@@ -852,7 +556,6 @@ class MainActivity : FlutterActivity() {
                 for (i in 0 until menu.size()) {
                     val item = menu.getItem(i)
                     val title = item.title?.toString()?.lowercase() ?: ""
-                    // Hapus opsi pencarian web atau share aplikasi luar
                     if (title.contains("search") || title.contains("cari") ||
                         title.contains("share") || title.contains("bagikan") ||
                         item.intent != null) {
@@ -867,7 +570,7 @@ class MainActivity : FlutterActivity() {
         super.onActionModeStarted(mode)
     }
 
-    // Intersepsi seluruh event tombol sebelum masuk ke sub-komponen
+    // Telan tombol volume agar suara tidak bisa dikecilkan
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isLockdownActive) {
             when (event.keyCode) {
@@ -875,7 +578,7 @@ class MainActivity : FlutterActivity() {
                 KeyEvent.KEYCODE_VOLUME_MUTE,
                 KeyEvent.KEYCODE_VOLUME_UP -> {
                     enforceMaxVolume()
-                    return true // Telan seluruh siklus tombol volume agar tidak bisa dikecilkan
+                    return true
                 }
             }
         }
@@ -910,19 +613,12 @@ class MainActivity : FlutterActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
-    // Deteksi jika jendela kehilangan fokus (misal notifikasi ditarik, floating app disentuh, atau recent apps dibuka)
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            isWindowObscured = false
-            ExamGuardService.isActivityInForeground = true
-        }
         if (isLockdownActive) {
             if (!hasFocus) {
-                // Jangan ganggu dialog sistem Sematkan Layar saat sedang meminta izin sematkan
                 if (!isInPinDialogGracePeriod()) {
                     collapseStatusBar()
-                    bringAppToFront()
                     if (!isInStartupGracePeriod()) {
                         startAlarmSound(5000L)
                     }
@@ -931,79 +627,31 @@ class MainActivity : FlutterActivity() {
                 enforceMaxBrightness()
                 enforceMaxVolume()
                 applyImmersiveMode()
-                applySystemGestureExclusion()
-                // Jika kembali fokus namun Lock Task terlepas, langsung kunci kembali
-                if (!isInLockTaskMode() && !isInPinDialogGracePeriod()) {
-                    requestScreenPinning()
-                }
             }
         }
-        notifyFlutterStateIfChanged()
     }
 
-    // Deteksi saat pengguna mencoba menekan tombol Home, Recent Apps, atau swipe keluar di Android
+    // Deteksi saat pengguna keluar via tombol Home, Recent Apps, atau usap navigasi gerakan (Gesture)
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (isLockdownActive) {
-            ExamGuardService.isActivityInForeground = false
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
                 startAlarmSound(5000L)
-                bringAppToFront()
                 methodChannel?.invokeMethod("onUserLeaveHint", null)
             }
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (isLockdownActive) {
-            bringAppToFront()
-            if (intent.getBooleanExtra("FORCE_RELAUNCH_ALARM", false) ||
-                (!isInPinDialogGracePeriod() && !isInStartupGracePeriod())) {
-                startAlarmSound(5000L)
-                methodChannel?.invokeMethod("onUserLeaveHint", null)
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        ExamGuardService.isActivityInForeground = true
-        if (isLockdownActive) {
-            enforceMaxBrightness()
-            enforceMaxVolume()
-            applyImmersiveMode()
-            applySystemGestureExclusion()
-            notifyFlutterStateIfChanged()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        ExamGuardService.isActivityInForeground = false
         if (isLockdownActive) {
             if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
                 startAlarmSound(5000L)
-                bringAppToFront()
-            }
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        ExamGuardService.isActivityInForeground = false
-        if (isLockdownActive) {
-            if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
-                startAlarmSound(5000L)
-                bringAppToFront()
-                methodChannel?.invokeMethod("onUserLeaveHint", null)
             }
         }
     }
 
     override fun onDestroy() {
-        ExamGuardService.stopGuard(this)
         mainHandler.removeCallbacks(lockdownEnforcerRunnable)
         stopAlarmSound()
         super.onDestroy()

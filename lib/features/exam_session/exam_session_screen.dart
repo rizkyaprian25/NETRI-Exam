@@ -31,9 +31,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
   ConnectionStatus _connectionStatus = ConnectionStatus.connected;
   bool _isLockDialogShowing = false;
   bool _isExamCompleted = false;
-  bool _isPinned = true;
   bool _isObscured = false;
-  bool _isGestureMode = false;
 
   bool get _isNativeMobilePlatform =>
       !kIsWeb &&
@@ -59,28 +57,18 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     final lockdown = LockdownService();
     lockdown.enableLockdown(widget.session.sessionId);
 
-    // Pantau perubahan status Sematkan Layar (Lock Task), jendela mengambang, dan Mode Gerakan (Gesture)
+    // Pantau perubahan status jendela mengambang (Floating Apps / Split Screen)
     lockdown.onLockStateChanged = (bool isPinned, bool isObscured, bool isGestureMode) {
       if (!mounted) return;
       setState(() {
-        _isPinned = isPinned;
         _isObscured = isObscured;
-        _isGestureMode = isGestureMode;
       });
     };
 
-    // Verifikasi awal status Sematkan Layar, Mode 3 Tombol, dan kebersihan layar
-    lockdown.isLockTaskActive().then((pinned) {
-      if (!mounted) return;
-      setState(() => _isPinned = pinned);
-    });
+    // Verifikasi awal kebersihan layar
     lockdown.checkScreenClear().then((clear) {
       if (!mounted) return;
       setState(() => _isObscured = !clear);
-    });
-    lockdown.isThreeButtonNavigation().then((threeButton) {
-      if (!mounted) return;
-      setState(() => _isGestureMode = !threeButton);
     });
 
     lockdown.onLockRequired = () {
@@ -435,28 +423,13 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     return Stack(
       children: [
         content,
-        if (_isObscured || !_isPinned) _buildSecurityCurtain(),
+        if (_isObscured) _buildSecurityCurtain(),
       ],
     );
   }
 
-  /// Tirai pelindung penuh saat Floating App terdeteksi atau Sematkan Layar terlepas
+  /// Tirai pelindung saat aplikasi mengambang / split-screen terdeteksi
   Widget _buildSecurityCurtain() {
-    final String titleText;
-    final String bodyText;
-
-    if (_isObscured) {
-      titleText = 'Aplikasi Mengambang (Floating App) Terdeteksi!';
-      bodyText =
-          'Lembar soal disembunyikan karena terdeteksi jendela mengambang (seperti Chrome Floating Window) aktif di layar. '
-          'Tekan tombol di bawah untuk mengunci layar dan menutup paksa seluruh aplikasi mengambang.';
-    } else {
-      titleText = 'Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!';
-      bodyText =
-          'Agar seluruh aplikasi mengambang tertutup otomatis dan lembar ujian terlindungi selama ujian berlangsung, '
-          'Anda wajib menekan "Sematkan / Oke" pada konfirmasi sistem Android.';
-    }
-
     return Positioned.fill(
       child: Material(
         color: const Color(0xFF141824),
@@ -486,9 +459,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       ),
                     ),
                     const SizedBox(height: NetriSpacing.space4),
-                    Text(
-                      titleText,
-                      style: const TextStyle(
+                    const Text(
+                      'Aplikasi Mengambang (Floating App) Terdeteksi!',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 19,
                         fontWeight: FontWeight.bold,
@@ -496,9 +469,10 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: NetriSpacing.space3),
-                    Text(
-                      bodyText,
-                      style: const TextStyle(
+                    const Text(
+                      'Lembar soal disembunyikan karena terdeteksi jendela mengambang atau split-screen aktif di layar. '
+                      'Tutup semua jendela mengambang lalu tekan tombol di bawah untuk melanjutkan ujian.',
+                      style: TextStyle(
                         color: Colors.white70,
                         fontSize: 13.5,
                         height: 1.45,
@@ -515,55 +489,19 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                           borderRadius: BorderRadius.circular(NetriRadius.md),
                         ),
                       ),
-                      icon: const Icon(Icons.lock_rounded, size: 20),
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
                       label: const Text(
-                        'Kunci Layar & Tutup Floating Apps',
+                        'Periksa Ulang Layar & Lanjut',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: () async {
-                        final threeButton = await LockdownService().isThreeButtonNavigation();
-                        final pinned = await LockdownService().requestLockTask();
                         final clear = await LockdownService().checkScreenClear();
                         if (!mounted) return;
                         setState(() {
-                          _isGestureMode = !threeButton;
-                          _isPinned = pinned;
                           _isObscured = !clear;
                         });
                       },
                     ),
-                    const SizedBox(height: NetriSpacing.space2),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70,
-                        side: const BorderSide(color: Colors.white30),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(NetriRadius.md),
-                        ),
-                      ),
-                      icon: const Icon(Icons.settings_rounded, size: 18),
-                      label: const Text('Buka Pengaturan Sematkan Layar'),
-                      onPressed: () {
-                        LockdownService().openSecuritySettings();
-                      },
-                    ),
-                    if (_isGestureMode && !_isPinned) ...[
-                      const SizedBox(height: NetriSpacing.space2),
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white60,
-                        ),
-                        icon: const Icon(Icons.touch_app_rounded, size: 16),
-                        label: const Text(
-                          'Opsional: Ubah ke Mode 3 Tombol di Pengaturan HP',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        onPressed: () {
-                          LockdownService().openNavigationSettings();
-                        },
-                      ),
-                    ],
                   ],
                 ),
               ),

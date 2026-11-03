@@ -240,10 +240,9 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Anti Floating Apps (Chrome Mengambang): Tolak Masuk Saat Ada Floating App & Tirai Kunci Layar',
+      'Skenario Anti Floating Apps: Tolak Masuk Saat Ada Floating App & Tirai Menutup Saat Terdeteksi Obscured',
       (WidgetTester tester) async {
         bool mockScreenClear = false;
-        bool mockPinned = false;
 
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
@@ -252,14 +251,6 @@ void main() {
             channelCallLog.add(methodCall.method);
             if (methodCall.method == 'checkScreenClear') {
               return mockScreenClear;
-            }
-            if (methodCall.method == 'isLockTaskActive') {
-              return mockPinned;
-            }
-            if (methodCall.method == 'requestLockTask') {
-              mockPinned = true;
-              mockScreenClear = true;
-              return true;
             }
             return true;
           },
@@ -283,7 +274,7 @@ void main() {
         );
         expect(find.byType(ExamSessionScreen), findsNothing);
 
-        // 2. Setelah layar bersih di beranda, lanjutkan masuk ke ruang ujian namun belum di-pin (mockPinned = false)
+        // 2. Setelah layar bersih di beranda, lanjutkan masuk ke ruang ujian
         mockScreenClear = true;
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
@@ -296,50 +287,49 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(ExamSessionScreen), findsOneWidget);
+        expect(find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'), findsNothing);
 
-        // 3. Karena belum di-pin (mockPinned = false), Tirai Pelindung wajib menutupi soal ujian
-        expect(
-          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
-          findsOneWidget,
-        );
-        final lockTaskButton = find.widgetWithText(
-          ElevatedButton,
-          'Kunci Layar & Tutup Floating Apps',
-        );
-        expect(lockTaskButton, findsOneWidget);
-
-        // 4. Tekan tombol 'Kunci Layar & Tutup Floating Apps' -> memanggil requestLockTask()
-        await tester.tap(lockTaskButton);
+        // 3. Simulasikan floating app tiba-tiba muncul di tengah ujian
+        mockScreenClear = false;
+        final lockdown = LockdownService();
+        lockdown.onLockStateChanged?.call(true, true, false);
         await tester.pumpAndSettle();
 
-        expect(channelCallLog, contains('requestLockTask'));
+        // Tirai Pelindung wajib menutupi soal ujian
         expect(
-          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'),
+          findsOneWidget,
+        );
+
+        // 4. Setelah floating app ditutup, tekan periksa ulang
+        mockScreenClear = true;
+        final refreshButton = find.widgetWithText(
+          ElevatedButton,
+          'Periksa Ulang Layar & Lanjut',
+        );
+        expect(refreshButton, findsOneWidget);
+        await tester.tap(refreshButton);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Aplikasi Mengambang (Floating App) Terdeteksi!'),
           findsNothing,
         );
       },
     );
 
     testWidgets(
-      'Skenario Mode Gerakan (Gesture Navigation): Diizinkan Ujian Langsung dengan Proteksi Overlay & Alarm Teriakan Siap Siaga',
+      'Skenario Mode Gerakan: Masuk Ujian Langsung Mulus Tanpa Peringatan Palsu Saat Scroll & Alarm Bunyi 5 Detik Saat Keluar',
       (WidgetTester tester) async {
-        bool mockIsThreeButton = false; // Mode Gerakan aktif
-        bool mockHasOverlay = false;
-
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
           const MethodChannel('com.netri.exam/lockdown'),
           (MethodCall methodCall) async {
             channelCallLog.add(methodCall.method);
-            if (methodCall.method == 'isThreeButtonNavigation') {
-              return mockIsThreeButton;
-            }
-            if (methodCall.method == 'hasOverlayPermission') {
-              return mockHasOverlay;
-            }
-            if (methodCall.method == 'requestOverlayPermission') {
-              mockHasOverlay = true;
-              return true;
+            if (methodCall.arguments is Map) {
+              channelArguments.addAll(
+                Map<String, dynamic>.from(methodCall.arguments as Map),
+              );
             }
             return true;
           },
@@ -349,48 +339,50 @@ void main() {
         await tester.pumpAndSettle();
 
         final urlField = find.byType(TextField).first;
-        await tester.enterText(urlField, 'https://forms.gle/gestureAllowedTest123');
+        await tester.enterText(urlField, 'https://forms.gle/gestureNaturalTest123');
 
-        // 1. Coba mulai ujian saat izin Overlay belum diberikan
+        // 1. Siswa langsung klik Mulai Ujian
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
 
-        // Pastikan muncul permintaan izin overlay untuk menjaga layar di Mode Gerakan
-        expect(find.text('Izin Penguncian Layar Ujian Diperlukan'), findsOneWidget);
-        expect(find.byType(ExamSessionScreen), findsNothing);
-
-        // 2. Siswa mengaktifkan izin overlay
-        final grantOverlayButton = find.widgetWithText(
-          ElevatedButton,
-          'Aktifkan Izin Kunci Layar',
-        );
-        expect(grantOverlayButton, findsOneWidget);
-        await tester.tap(grantOverlayButton);
-        await tester.pumpAndSettle();
-
-        expect(channelCallLog, contains('requestOverlayPermission'));
-
-        // 3. Setelah izin overlay aktif, siswa diizinkan ujian langsung meski di Mode Gerakan
-        await tester.tap(startExamButton);
-        await tester.pumpAndSettle();
-
-        // Pastikan konfirmasi ujian menampilkan info proteksi Mode Gerakan
+        // Konfirmasi awal muncul dengan lancar
         expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
-        expect(find.textContaining('Mode Gerakan (Gesture) Terdeteksi'), findsOneWidget);
 
         final confirmStartButton = find.widgetWithText(
           ElevatedButton,
           'Saya Siap & Mulai Mengerjakan',
         );
-        expect(confirmStartButton, findsOneWidget);
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        // Masuk ke ruang ujian terkunci secara lancar
+        // Masuk ke ruang ujian
         expect(find.byType(ExamSessionScreen), findsOneWidget);
         expect(find.text('Exam NETRI (Terkunci)'), findsOneWidget);
-        expect(channelCallLog, contains('enableSecureWindow'));
+        expect(find.text('Dilarang Keluar!'), findsNothing);
+
+        // 2. Siswa mencoba keluar / beralih aplikasi di Mode Gerakan
+        await tester.pump(const Duration(seconds: 6));
+        LockdownService().expireStartupGracePeriodForTesting();
+
+        channelCallLog.clear();
+        channelArguments.clear();
+        await LockdownService().handleAppResignedActive();
+        await tester.pumpAndSettle();
+
+        // Alarm berteriak 5 detik dan dialog peringatan muncul
+        expect(channelCallLog, contains('startAlarmSound'));
+        expect(find.byType(LockScreenDialog), findsOneWidget);
+
+        // Siswa mengakui dan kembali ke lembar ujian
+        final acknowledgeButton = find.widgetWithText(
+          ElevatedButton,
+          'Saya Mengerti, Kembali ke Ujian',
+        );
+        await tester.tap(acknowledgeButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LockScreenDialog), findsNothing);
       },
     );
   });

@@ -96,24 +96,11 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Lapis 2: Wajibkan izin Overlay ("Tampilkan di atas aplikasi lain") untuk menarik layar jika siswa keluar
-    final hasOverlay = await LockdownService().hasOverlayPermission();
-    if (!mounted) return;
-    if (!hasOverlay) {
-      _showOverlayPermissionSheet();
-      return;
-    }
-
-    // Deteksi apakah HP menggunakan Mode Gerakan (Gesture) untuk menampilkan peringatan khusus
-    final isThreeButton = await LockdownService().isThreeButtonNavigation();
-    if (!mounted) return;
-
     setState(() {
       _errorMessage = null;
     });
 
     _showConfirmationBottomSheet(
-      isGestureMode: !isThreeButton,
       onConfirmed: () async {
         final stillClear = await LockdownService().checkScreenClear();
         if (!mounted) return;
@@ -155,67 +142,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Lembar permintaan izin "Tampilkan di atas aplikasi lain" (Overlay) untuk proteksi anti-keluar
-  void _showOverlayPermissionSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(NetriRadius.lg)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(NetriSpacing.space5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.lock_person_rounded, color: NetriColors.brandLight, size: 28),
-                  SizedBox(width: NetriSpacing.space3),
-                  Expanded(
-                    child: Text(
-                      'Izin Penguncian Layar Ujian Diperlukan',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: NetriSpacing.space3),
-              const Text(
-                'Agar lembar ujian tidak dapat ditinggalkan dan tetap terlindungi saat menggunakan navigasi gerakan, harap aktifkan izin "Tampilkan di atas aplikasi lain" untuk Exam NETRI.',
-                style: TextStyle(fontSize: 13, height: 1.45),
-              ),
-              const SizedBox(height: NetriSpacing.space4),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: NetriColors.brandLight,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: const Icon(Icons.verified_user_rounded, size: 20),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  LockdownService().requestOverlayPermission();
-                },
-                label: const Text(
-                  'Aktifkan Izin Kunci Layar',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Lembar konfirmasi ringkas sebelum mengunci layar
-  void _showConfirmationBottomSheet({
-    required VoidCallback onConfirmed,
-    bool isGestureMode = false,
-  }) {
+  void _showConfirmationBottomSheet({required VoidCallback onConfirmed}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -270,36 +198,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 '• Mencoba keluar akan membunyikan alarm suara "Aku Nyontek!" keras selama 5 detik!',
                 style: TextStyle(fontSize: 12, height: 1.4),
               ),
-
-              if (isGestureMode) ...[
-                const SizedBox(height: NetriSpacing.space3),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withAlpha(30),
-                    borderRadius: BorderRadius.circular(NetriRadius.sm),
-                    border: Border.all(color: Colors.amber.shade700.withAlpha(80)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.swipe_rounded, color: Colors.amber.shade900, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Mode Gerakan (Gesture) Terdeteksi:\n'
-                          'Layar dijaga oleh pengawal otomatis. Mencoba usap keluar akan membunyikan teriakan "Aku Nyontek!" 5 detik dan ditarik kembali!',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: Colors.amber.shade900,
-                            height: 1.35,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
 
               const SizedBox(height: NetriSpacing.space5),
               ElevatedButton.icon(
