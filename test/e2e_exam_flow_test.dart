@@ -391,8 +391,10 @@ void main() {
     );
 
     testWidgets(
-      'Skenario Mode Gestur: Masuk Langsung Tanpa Tirai & Saat Keluar Alarm Berbunyi Non-Stop (-1)',
+      'Skenario Mode Gestur: Wajib Sematkan Layar (Agar Tidak Bisa Buka Aplikasi Lain) & Saat Keluar Alarm Non-Stop (-1)',
       (WidgetTester tester) async {
+        bool mockPinned = false;
+
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
           const MethodChannel('com.netri.exam/lockdown'),
@@ -400,6 +402,13 @@ void main() {
             channelCallLog.add(methodCall.method);
             if (methodCall.method == 'isThreeButtonNavigation') {
               return false; // Mode Gestur
+            }
+            if (methodCall.method == 'isLockTaskActive') {
+              return mockPinned;
+            }
+            if (methodCall.method == 'requestLockTask') {
+              mockPinned = true;
+              return true;
             }
             if (methodCall.arguments is Map) {
               channelArguments.addAll(
@@ -416,7 +425,7 @@ void main() {
         final urlField = find.byType(TextField).first;
         await tester.enterText(urlField, 'https://forms.gle/gestureNonStopTest123');
 
-        // 1. Siswa di Mode Gestur langsung klik Mulai Ujian
+        // 1. Siswa di Mode Gestur klik Mulai Ujian
         final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
         await tester.tap(startExamButton);
         await tester.pumpAndSettle();
@@ -428,11 +437,31 @@ void main() {
         await tester.tap(confirmStartButton);
         await tester.pumpAndSettle();
 
-        // Di Mode Gestur, lembar soal langsung tampil tanpa terhalang tirai sematan palsu
         expect(find.byType(ExamSessionScreen), findsOneWidget);
+
+        // 2. Di Mode Gestur, jika belum menyematkan layar (pilih Lain Kali / mockPinned = false),
+        // Tirai Pelindung WAJIB tetap menutup soal agar siswa menyematkan layar terlebih dahulu
+        expect(
+          find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Pada mode gestur, Anda wajib menekan "Sematkan / Aktifkan"'),
+          findsOneWidget,
+        );
+
+        final lockTaskButton = find.widgetWithText(
+          ElevatedButton,
+          'Kunci Layar & Mulai Ujian',
+        );
+        await tester.tap(lockTaskButton);
+        await tester.pumpAndSettle();
+
+        // Setelah sematkan layar dikonfirmasi, tirai terbuka
+        expect(channelCallLog, contains('requestLockTask'));
         expect(find.text('Kunci Layar Ujian (Sematkan Layar) Wajib Aktif!'), findsNothing);
 
-        // 2. Siswa melakukan usap keluar / beralih aplikasi di Mode Gestur
+        // 3. Siswa melakukan usap keluar ke Home di Mode Gestur
         await tester.pump(const Duration(seconds: 6));
         LockdownService().expireStartupGracePeriodForTesting();
 

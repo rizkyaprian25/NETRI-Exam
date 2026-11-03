@@ -432,7 +432,7 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
       );
     }
 
-    final bool shouldShowCurtain = _isObscured || (_isThreeButtonMode && !_isPinned);
+    final bool shouldShowCurtain = _isObscured || !_isPinned;
 
     return Stack(
       children: [
@@ -442,9 +442,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
     );
   }
 
-  /// Tirai pelindung saat aplikasi mengambang terdeteksi atau mode tombol belum disematkan
+  /// Tirai pelindung saat aplikasi mengambang terdeteksi atau layar belum disematkan (mode tombol & mode gestur)
   Widget _buildSecurityCurtain() {
-    final bool isPinRequired = _isThreeButtonMode && !_isPinned;
+    final bool isPinRequired = !_isPinned;
 
     return Positioned.fill(
       child: Material(
@@ -489,7 +489,9 @@ class _ExamSessionScreenState extends State<ExamSessionScreen>
                     const SizedBox(height: NetriSpacing.space3),
                     Text(
                       isPinRequired
-                          ? 'Pada mode tombol, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar tombol Home dan Recent terkunci penuh selama ujian.'
+                          ? (_isThreeButtonMode
+                              ? 'Pada mode tombol, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar tombol Home dan Recent terkunci penuh selama ujian.'
+                              : 'Pada mode gestur, Anda wajib menekan "Sematkan / Aktifkan" pada konfirmasi sistem Android agar HP terkunci dan tidak dapat membuka aplikasi lain selama ujian berlangsung.')
                           : 'Lembar soal disembunyikan karena terdeteksi jendela mengambang atau split-screen aktif di layar. Tutup semua jendela mengambang lalu tekan tombol di bawah untuk melanjutkan ujian.',
                       style: const TextStyle(
                         color: Colors.white70,
