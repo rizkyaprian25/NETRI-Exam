@@ -6,6 +6,9 @@
 !.env.example
 *.pem
 *.key
+*.jks
+*.keystore
+key.properties
 credentials.json
 service-account.json
 

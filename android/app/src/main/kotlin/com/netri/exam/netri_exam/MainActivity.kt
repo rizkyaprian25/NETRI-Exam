@@ -68,11 +68,6 @@ class MainActivity : FlutterActivity() {
         lastPinRequestTime = 0L
         wasPinnedOnce = false
         stopAlarmSound()
-
-        // Pantau perubahan daftar jendela dari layanan aksesibilitas bila aktif
-        NetriWindowGuardService.onWindowHierarchyChanged = {
-            notifyFlutterStateIfChanged()
-        }
     }
 
     // Loop pengawas berkala (setiap 1000ms) untuk mengunci kecerahan 100%, volume 100%, dan memantau status Lock Task
@@ -168,10 +163,9 @@ class MainActivity : FlutterActivity() {
     private fun isScreenClear(): Boolean {
         val multiWindow = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInMultiWindowMode else false
         val pipMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) isInPictureInPictureMode else false
-        val windowGuardFloating = NetriWindowGuardService.hasVisibleFloatingWindow(this)
         val freeformShrunk = isActivityWidthShrunk()
 
-        if (isWindowObscured || multiWindow || pipMode || windowGuardFloating || freeformShrunk) {
+        if (isWindowObscured || multiWindow || pipMode || freeformShrunk) {
             return false
         }
 
@@ -223,8 +217,8 @@ class MainActivity : FlutterActivity() {
     private fun configureDeviceOwnerIfAvailable() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val adminComponent = ComponentName(this, NetriDeviceAdminReceiver::class.java)
             if (dpm.isDeviceOwnerApp(packageName)) {
+                val adminComponent = ComponentName(packageName, "${packageName}.DeviceAdmin")
                 dpm.setLockTaskPackages(adminComponent, arrayOf(packageName))
             }
         } catch (e: Exception) {}
@@ -804,7 +798,6 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        NetriWindowGuardService.onWindowHierarchyChanged = null
         mainHandler.removeCallbacks(lockdownEnforcerRunnable)
         stopAlarmSound()
         super.onDestroy()
