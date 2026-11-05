@@ -405,7 +405,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               const Text(
                 '• Kecerahan layar & volume suara otomatis disetel 100% dan tidak dapat dikecilkan.\n'
                 '• Notifikasi ditutup dan dilarang membuka aplikasi lain.\n'
-                '• Mencoba keluar akan membunyikan alarm suara "Aku Nyontek!" keras selama 15 detik!',
+                '• Mencoba keluar akan membunyikan sirine peringatan keras selama 15 detik!',
                 style: TextStyle(fontSize: 12, height: 1.4),
               ),
 

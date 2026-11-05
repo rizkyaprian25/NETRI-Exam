@@ -89,7 +89,7 @@ void main() {
         // 5. Verifikasi Modal Konfirmasi Bottom Sheet
         expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
         expect(find.textContaining('Pengawasan Guru • Layar 100% • Suara 100%'), findsOneWidget);
-        expect(find.textContaining('Mencoba keluar akan membunyikan alarm suara'), findsOneWidget);
+        expect(find.textContaining('Mencoba keluar akan membunyikan sirine'), findsOneWidget);
 
         // 6. Mulai Ujian Secara Resmi
         final confirmStartButton = find.widgetWithText(
@@ -114,9 +114,9 @@ void main() {
         await widgetsAppState.didPopRoute();
         await tester.pumpAndSettle();
 
-        // Pastikan dialog Dilarang Keluar muncul dan alarm 15 detik dipanggil
+        // Pastikan dialog Dilarang Keluar muncul dan sirine 15 detik dipanggil
         expect(find.text('Dilarang Keluar!'), findsOneWidget);
-        expect(find.text('Alarm suara "Aku Nyontek!" berbunyi keras selama 15 detik!'), findsOneWidget);
+        expect(find.text('Sirine peringatan aktif berbunyi keras selama 15 detik!'), findsOneWidget);
         expect(channelCallLog, contains('startAlarmSound'));
         expect(channelArguments['durationMs'], equals(15000));
 
@@ -479,7 +479,7 @@ void main() {
         await LockdownService().handleAppResignedActive();
         await tester.pumpAndSettle();
 
-        // Alarm berteriak 15 detik (durationMs: 15000) dan dialog peringatan muncul
+        // Sirine berbunyi 15 detik (durationMs: 15000) dan dialog peringatan muncul
         expect(channelCallLog, contains('startAlarmSound'));
         expect(channelArguments['durationMs'], equals(15000));
         expect(find.byType(LockScreenDialog), findsOneWidget);

@@ -159,14 +159,14 @@ class LockdownService {
     } catch (_) {}
   }
 
-  /// Membunyikan suara alarm teriakan keras selama 15 detik (bawaan: 15000 ms)
+  /// Membunyikan suara sirine darurat tajam selama 15 detik (bawaan: 15000 ms)
   Future<void> startAlarmSound({int durationMs = 15000}) async {
     try {
       await _channel.invokeMethod('startAlarmSound', {'durationMs': durationMs});
     } catch (_) {}
   }
 
-  /// Menghentikan suara alarm peringatan
+  /// Menghentikan suara sirine peringatan
   Future<void> stopAlarmSound() async {
     try {
       await _channel.invokeMethod('stopAlarmSound');

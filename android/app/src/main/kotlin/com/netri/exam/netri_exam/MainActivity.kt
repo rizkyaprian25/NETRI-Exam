@@ -7,8 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioAttributes
+import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.MediaPlayer
+import android.media.AudioTrack
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
@@ -49,9 +50,10 @@ class MainActivity : FlutterActivity() {
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
 
-    // Media player & ToneGenerator untuk memutar alarm suara "Aku Nyontek!"
-    private var voiceMediaPlayer: MediaPlayer? = null
+    // AudioTrack & ToneGenerator untuk mensintesis sirine darurat yang tajam dan keras
+    private var sirenAudioTrack: AudioTrack? = null
     private var fallbackToneGenerator: ToneGenerator? = null
+    private var sirenPcmBuffer: ShortArray? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var alarmTimerRunnable: Runnable? = null
@@ -85,7 +87,7 @@ class MainActivity : FlutterActivity() {
                 if (pinnedNow) {
                     wasPinnedOnce = true
                 } else if (wasPinnedOnce && !isInPinDialogGracePeriod()) {
-                    // Siswa melepas sematan layar di tengah ujian: bunyikan alarm suara selama 15 detik
+                    // Siswa melepas sematan layar di tengah ujian: bunyikan sirine peringatan selama 15 detik
                     startAlarmSound(15000L)
                 }
 
@@ -492,94 +494,82 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {}
     }
 
-    // Memutar alarm suara "Aku Nyontek!" selama durasi tertentu (bawaan: 15 detik)
+    // Menghasilkan 1 gelombang periodik penuh (0.4 detik = 2.5 siklus per detik)
+    // Suara sirine darurat wailing tajam dengan rentang frekuensi 600 Hz - 1400 Hz dan harmonik ke-3
+    private fun getOrCreateSirenBuffer(): ShortArray {
+        sirenPcmBuffer?.let { return it }
+        val sampleRate = 44100
+        val durationSeconds = 0.4 // 400ms per siklus sapuan frekuensi
+        val numSamples = (sampleRate * durationSeconds).toInt() // 17640 sampel
+        val buffer = ShortArray(numSamples)
+
+        val modFreq = 2.5 // Sapuan frekuensi 2.5 siklus per detik
+        val carrierFreq = 1000.0 // Frekuensi tengah 1000 Hz
+        val freqDeviation = 400.0 // Deviasi frekuensi (+- 400 Hz -> rentang 600 Hz s/d 1400 Hz)
+
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val phase = 2.0 * Math.PI * (carrierFreq * t - (freqDeviation / (2.0 * Math.PI * modFreq)) * Math.sin(2.0 * Math.PI * modFreq * t))
+            val raw = 0.75 * Math.sin(phase) + 0.25 * Math.sin(3.0 * phase)
+            val sample = (raw / 0.85 * 32767.0).toInt().coerceIn(-32768, 32767)
+            buffer[i] = sample.toShort()
+        }
+        sirenPcmBuffer = buffer
+        return buffer
+    }
+
+    // Memutar sirine darurat tajam selama durasi tertentu (bawaan: 15 detik)
     private fun startAlarmSound(durationMs: Long = 15000L) {
         runOnUiThread {
             try {
                 // Jika sedang berputar, biarkan bunyi hingga selesai durasi tanpa di-restart berulang
-                if (voiceMediaPlayer?.isPlaying == true) {
+                if (sirenAudioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING) {
                     return@runOnUiThread
                 }
 
                 enforceMaxVolume()
                 stopAlarmSound()
 
-                var playedVoice = false
+                val buffer = getOrCreateSirenBuffer()
+                val sampleRate = 44100
 
-                // Cara 1: Putar suara teriakan "Aku Nyontek!" dari res/raw/alarm_nyontek.mp3
-                try {
-                    val resId = resources.getIdentifier("alarm_nyontek", "raw", packageName)
-                    if (resId != 0) {
-                        val afd = resources.openRawResourceFd(resId)
-                        if (afd != null) {
-                            val mp = MediaPlayer().apply {
-                                setAudioAttributes(
-                                    AudioAttributes.Builder()
-                                        .setUsage(AudioAttributes.USAGE_ALARM)
-                                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                                        .build()
-                                )
-                                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                                isLooping = true
-                                setVolume(1.0f, 1.0f)
-                                prepare()
-                                start()
-                            }
-                            afd.close()
-                            voiceMediaPlayer = mp
-                            playedVoice = true
-                        }
-                    }
-                } catch (e: Exception) {
-                    playedVoice = false
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+
+                val audioFormat = AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+
+                val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    AudioTrack.Builder()
+                        .setAudioAttributes(audioAttributes)
+                        .setAudioFormat(audioFormat)
+                        .setBufferSizeInBytes(buffer.size * 2)
+                        .setTransferMode(AudioTrack.MODE_STATIC)
+                        .build()
+                } else {
+                    @Suppress("DEPRECATION")
+                    AudioTrack(
+                        audioAttributes,
+                        audioFormat,
+                        buffer.size * 2,
+                        AudioTrack.MODE_STATIC,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE
+                    )
                 }
 
-                // Cara 2: Cadangan Flutter assets
-                if (!playedVoice) {
-                    try {
-                        val afd = assets.openFd("flutter_assets/assets/audio/alarm_nyontek.mp3")
-                        val mp = MediaPlayer().apply {
-                            setAudioAttributes(
-                                AudioAttributes.Builder()
-                                    .setUsage(AudioAttributes.USAGE_ALARM)
-                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                                    .build()
-                            )
-                            setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                            isLooping = true
-                            setVolume(1.0f, 1.0f)
-                            prepare()
-                            start()
-                        }
-                        afd.close()
-                        voiceMediaPlayer = mp
-                        playedVoice = true
-                    } catch (e: Exception) {
-                        playedVoice = false
-                    }
-                }
+                track.write(buffer, 0, buffer.size)
+                track.setLoopPoints(0, buffer.size, -1) // Loop sirine tak terputus
+                track.setVolume(1.0f)
+                track.play()
 
-                // Cara 3: Cadangan MediaPlayer.create
-                if (!playedVoice) {
-                    try {
-                        val resId = resources.getIdentifier("alarm_nyontek", "raw", packageName)
-                        if (resId != 0) {
-                            val mp = MediaPlayer.create(this, resId)
-                            if (mp != null) {
-                                mp.isLooping = true
-                                mp.setVolume(1.0f, 1.0f)
-                                mp.start()
-                                voiceMediaPlayer = mp
-                                playedVoice = true
-                            }
-                        }
-                    } catch (e: Exception) {
-                        playedVoice = false
-                    }
-                }
+                sirenAudioTrack = track
 
                 // Hentikan otomatis HANYA jika durationMs > 0
-                // Jika durationMs <= 0 (misal -1L), alarm berteriak terus-menerus tanpa henti sampai tombol ditekan
                 if (durationMs > 0) {
                     alarmTimerRunnable = Runnable {
                         stopAlarmSound()
@@ -588,7 +578,7 @@ class MainActivity : FlutterActivity() {
                 }
 
             } catch (e: Exception) {
-                playFallbackTone(if (durationMs > 0) durationMs else 5000L)
+                playFallbackTone(if (durationMs > 0) durationMs else 15000L)
             }
         }
     }
@@ -610,15 +600,15 @@ class MainActivity : FlutterActivity() {
                     alarmTimerRunnable = null
                 }
 
-                voiceMediaPlayer?.let {
+                sirenAudioTrack?.let {
                     try {
-                        if (it.isPlaying) {
+                        if (it.playState == AudioTrack.PLAYSTATE_PLAYING) {
                             it.stop()
                         }
                         it.release()
                     } catch (e: Exception) {}
                 }
-                voiceMediaPlayer = null
+                sirenAudioTrack = null
 
                 fallbackToneGenerator?.let {
                     try {
@@ -628,7 +618,7 @@ class MainActivity : FlutterActivity() {
                 }
                 fallbackToneGenerator = null
             } catch (e: Exception) {
-                voiceMediaPlayer = null
+                sirenAudioTrack = null
                 fallbackToneGenerator = null
             }
         }
