@@ -23,6 +23,41 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
       'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
 
+  // Daftar domain yang sah untuk formulir ujian dan pemendek tautan terpercaya
+  static const List<String> _allowedExamDomains = [
+    'docs.google.com',
+    'forms.google.com',
+    'google.com',
+    'gstatic.com',
+    'googleusercontent.com',
+    'forms.gle',
+    's.id',
+    'gg.gg',
+    'bit.ly',
+    'rizkyaprian25.github.io',
+  ];
+
+  /// Menormalisasi dan memvalidasi URL formulir ujian atau pemendek tautan yang sah
+  String? _validateAndNormalizeUrl(String raw) {
+    var trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    // Otomatis tambahkan skema https:// jika siswa tidak mengetik http/https
+    if (!trimmed.startsWith(RegExp(r'https?://', caseSensitive: false))) {
+      trimmed = 'https://$trimmed';
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.host.isEmpty) return null;
+
+    final host = uri.host.toLowerCase();
+    final isAllowed = _allowedExamDomains.any(
+      (domain) => host == domain || host.endsWith('.$domain'),
+    );
+
+    return isAllowed ? trimmed : null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -94,8 +129,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       );
 
       if (scannedUrl != null && scannedUrl.trim().isNotEmpty) {
+        final normalized = _validateAndNormalizeUrl(scannedUrl.trim()) ?? scannedUrl.trim();
         setState(() {
-          _urlController.text = scannedUrl.trim();
+          _urlController.text = normalized;
         });
 
         if (mounted) {
@@ -130,10 +166,11 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final uri = Uri.tryParse(rawUrl);
-    if (uri == null || (!rawUrl.contains('google.com') && !rawUrl.contains('forms.gle'))) {
+    final normalizedUrl = _validateAndNormalizeUrl(rawUrl);
+    if (normalizedUrl == null) {
       setState(() {
-        _errorMessage = 'Tautan harus berupa formulir Google Forms yang sah.';
+        _errorMessage =
+            'Tautan harus berupa Google Forms (forms.gle) atau tautan pendek (s.id, gg.gg).';
       });
       return;
     }
@@ -175,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                 'Ujian tidak dapat dimulai karena Anda belum menyematkan aplikasi! '
                 'Harap pilih "Sematkan / Aktifkan" pada konfirmasi sistem Android.';
           });
-          _showPinRequiredDialog(formUrl: rawUrl);
+          _showPinRequiredDialog(formUrl: normalizedUrl);
           return;
         }
 
@@ -191,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           return;
         }
 
-        _proceedToExam(rawUrl);
+        _proceedToExam(normalizedUrl);
       },
     );
   }
@@ -308,14 +345,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       deadlineAt: now.add(const Duration(hours: 12)),
       durationMinutes: 0,
       serverCurrentTime: now,
-      allowedDomains: const [
-        'docs.google.com',
-        'forms.google.com',
-        'google.com',
-        'gstatic.com',
-        'googleusercontent.com',
-        'forms.gle',
-      ],
+      allowedDomains: _allowedExamDomains,
       proctorPin: '', // Tanpa PIN
       mapel: 'Ujian Google Form',
       kelas: 'Umum',
@@ -523,7 +553,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                                 keyboardType: TextInputType.url,
                                 onTap: _checkFloatingAppStatus,
                                 decoration: InputDecoration(
-                                  hintText: 'https://forms.gle/... atau docs.google.com...',
+                                  hintText: 'https://forms.gle/... atau s.id/... atau docs.google.com...',
                                   prefixIcon: const Icon(Icons.link_rounded),
                                   suffixIcon: _urlController.text.isNotEmpty
                                       ? IconButton(

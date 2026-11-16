@@ -101,6 +101,11 @@ class ApiClient {
         'google.com',
         'gstatic.com',
         'googleusercontent.com',
+        'forms.gle',
+        's.id',
+        'gg.gg',
+        'bit.ly',
+        'rizkyaprian25.github.io',
       ],
     );
   }

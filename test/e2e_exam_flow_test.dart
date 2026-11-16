@@ -77,7 +77,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.text('Tautan harus berupa formulir Google Forms yang sah.'),
+          find.text('Tautan harus berupa Google Forms (forms.gle) atau tautan pendek (s.id, gg.gg).'),
           findsOneWidget,
         );
 
@@ -494,6 +494,39 @@ void main() {
 
         expect(channelCallLog, contains('stopAlarmSound'));
         expect(find.byType(LockScreenDialog), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Skenario Tautan Pendek (s.id): Terima Tautan s.id Tanpa https:// & Berhasil Masuk ke Sesi Ujian',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(const NetriExamApp());
+        await tester.pumpAndSettle();
+
+        final urlField = find.byType(TextField).first;
+        final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
+
+        // 1. Siswa memasukkan s.id/ujian7 tanpa awalan https://
+        await tester.enterText(urlField, 's.id/ujian7');
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        // 2. Berhasil lolos validasi dan menampilkan bottom sheet konfirmasi
+        expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
+
+        final confirmStartButton = find.widgetWithText(
+          ElevatedButton,
+          'Saya Siap & Mulai Mengerjakan',
+        );
+        await tester.tap(confirmStartButton);
+        await tester.pumpAndSettle();
+
+        // 3. Masuk ke ExamSessionScreen dengan formUrl ternormalisasi https://s.id/ujian7
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        final sessionScreen = tester.widget<ExamSessionScreen>(find.byType(ExamSessionScreen));
+        expect(sessionScreen.session.formUrl, equals('https://s.id/ujian7'));
+        expect(sessionScreen.session.allowedDomains, contains('s.id'));
+        expect(sessionScreen.session.allowedDomains, contains('gg.gg'));
       },
     );
   });
