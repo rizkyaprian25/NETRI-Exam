@@ -1,8 +1,6 @@
 package com.netri.exam.netri_exam
 
 import android.app.ActivityManager
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -83,11 +81,6 @@ class MainActivity : FlutterActivity() {
                 } else if (wasPinnedOnce && !isInPinDialogGracePeriod()) {
                     // Siswa melepas sematan layar di tengah ujian: bunyikan sirine peringatan selama 15 detik
                     startAlarmSound(15000L)
-                }
-
-                // Jangan tutup panel status bar saat dialog Sematkan Layar sistem sedang menunggu konfirmasi siswa
-                if (pinnedNow || !isInPinDialogGracePeriod()) {
-                    collapseStatusBar()
                 }
 
                 notifyFlutterStateIfChanged()
@@ -217,21 +210,10 @@ class MainActivity : FlutterActivity() {
         return (System.currentTimeMillis() - lastPinRequestTime) < PIN_DIALOG_GRACE_MS
     }
 
-    private fun configureDeviceOwnerIfAvailable() {
-        try {
-            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            if (dpm.isDeviceOwnerApp(packageName)) {
-                val adminComponent = ComponentName(packageName, "${packageName}.DeviceAdmin")
-                dpm.setLockTaskPackages(adminComponent, arrayOf(packageName))
-            }
-        } catch (e: Exception) {}
-    }
-
-    // Meminta sematkan layar
+    // Meminta sematkan layar secara aman tanpa refleksi API terlarang
     private fun requestScreenPinning() {
         lastPinRequestTime = System.currentTimeMillis()
         runOnUiThread {
-            configureDeviceOwnerIfAvailable()
             try {
                 if (!isInLockTaskMode()) {
                     startLockTask()
@@ -483,15 +465,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun collapseStatusBar() {
-        try {
-            val statusBarService = getSystemService("statusbar")
-            val statusBarManager = Class.forName("android.app.StatusBarManager")
-            val collapseMethod = statusBarManager.getMethod("collapsePanels")
-            collapseMethod.invoke(statusBarService)
-        } catch (e: Exception) {}
-    }
-
     // Menghasilkan 1 gelombang periodik penuh (0.4 detik = 2.5 siklus per detik)
     // Suara sirine darurat wailing tajam dengan rentang frekuensi 600 Hz - 1400 Hz dan harmonik ke-3
     private fun getOrCreateSirenBuffer(): ShortArray {
@@ -730,11 +703,8 @@ class MainActivity : FlutterActivity() {
         // Jangan mereset isWindowObscured = false saat hasFocus == true agar status floating app tidak hilang saat pindah fokus / tempel teks
         if (isLockdownActive) {
             if (!hasFocus) {
-                if (!isInPinDialogGracePeriod()) {
-                    collapseStatusBar()
-                    if (!isInStartupGracePeriod()) {
-                        startAlarmSound(15000L)
-                    }
+                if (!isInPinDialogGracePeriod() && !isInStartupGracePeriod()) {
+                    startAlarmSound(15000L)
                 }
             } else {
                 enforceMaxBrightness()
