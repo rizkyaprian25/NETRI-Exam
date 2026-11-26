@@ -10,12 +10,14 @@ class LockScreenDialog extends StatefulWidget {
   final int strikeCount;
   final String reason;
   final VoidCallback onDismissed;
+  final VoidCallback? onEmergencyExit;
 
   const LockScreenDialog({
     super.key,
     required this.strikeCount,
     required this.reason,
     required this.onDismissed,
+    this.onEmergencyExit,
   });
 
   @override
@@ -166,6 +168,24 @@ class _LockScreenDialogState extends State<LockScreenDialog> {
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
+                    if (widget.onEmergencyExit != null) ...[
+                      const SizedBox(height: NetriSpacing.space2),
+                      TextButton.icon(
+                        onPressed: widget.onEmergencyExit,
+                        icon: const Icon(
+                          Icons.admin_panel_settings_rounded,
+                          size: 18,
+                          color: NetriColors.stateDangerLight,
+                        ),
+                        label: const Text(
+                          'Keluar Darurat (Kode Pengawas)',
+                          style: TextStyle(
+                            color: NetriColors.stateDangerLight,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

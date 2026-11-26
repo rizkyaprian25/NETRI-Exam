@@ -46,7 +46,6 @@ class MainActivity : FlutterActivity() {
     private var lastReportedThreeButton: Boolean? = null
     private var lastReportedScreenClear: Boolean? = null
 
-    private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var originalMusicVolume: Int = -1
     private var originalAlarmVolume: Int = -1
 
@@ -130,11 +129,15 @@ class MainActivity : FlutterActivity() {
                     result.success(isInLockTaskMode())
                 }
                 "unpinScreen" -> {
-                    try {
-                        if (isInLockTaskMode()) {
-                            stopLockTask()
-                        }
-                    } catch (e: Exception) {}
+                    // Jalankan stopLockTask di UI thread agar aman dan segera laporkan status baru ke Flutter
+                    runOnUiThread {
+                        try {
+                            if (isInLockTaskMode()) {
+                                stopLockTask()
+                            }
+                        } catch (e: Exception) {}
+                        notifyFlutterStateIfChanged()
+                    }
                     result.success(true)
                 }
                 "openSecuritySettings" -> {
@@ -380,6 +383,7 @@ class MainActivity : FlutterActivity() {
                     stopLockTask()
                 }
             } catch (e: Exception) {}
+            notifyFlutterStateIfChanged()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 try {

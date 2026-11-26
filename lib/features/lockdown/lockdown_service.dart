@@ -205,6 +205,28 @@ class LockdownService {
     } catch (_) {}
   }
 
+  /// Keluar darurat oleh pengawas: hentikan sirine, putus sematkan layar, dan lepas seluruh penguncian
+  Future<void> emergencyExit() async {
+    _isLockdownActive = false;
+    _currentSessionId = null;
+    _lockdownStartTime = null;
+    _strikeCount = 0;
+    _appPausedTime = null;
+    onLockRequired = null;
+    onStrikeTriggered = null;
+    onLockStateChanged = null;
+
+    try {
+      await _channel.invokeMethod('stopAlarmSound');
+    } catch (_) {}
+    try {
+      await _channel.invokeMethod('unpinScreen');
+    } catch (_) {}
+    try {
+      await _channel.invokeMethod('disableSecureWindow');
+    } catch (_) {}
+  }
+
   /// Mencatat upaya membuka aplikasi mengambang (floating app) atau overlay di atas layar ujian
   Future<void> recordOverlayDetected({String? reason}) async {
     if (!_isLockdownActive || _currentSessionId == null) return;

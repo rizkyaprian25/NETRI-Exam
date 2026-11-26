@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netri_exam/app.dart';
 import 'package:netri_exam/contracts/models.dart';
+import 'package:netri_exam/core/network/api_client.dart';
 import 'package:netri_exam/core/storage/admin_config_store.dart';
 import 'package:netri_exam/core/theme/tokens.g.dart';
+import 'package:netri_exam/features/exam_session/exam_session_screen.dart';
+import 'package:netri_exam/features/lockdown/emergency_exit_guard.dart';
 
 void main() {
   group('Exam NETRI Smoke Checks', () {
@@ -98,6 +101,93 @@ void main() {
       expect(id1, equals('1faipqlsc_form1'));
       expect(id2, equals('form2short'));
       expect(id1, isNot(equals(id2)));
+    });
+
+    test('Validasi Passcode Keluar Darurat SHA-256 & Anti Brute-Force (Rate-Limit)', () {
+      final guard = EmergencyExitGuard.instance;
+      guard.resetForTesting();
+
+      // Kode salah ditolak hingga 5 kali dan memicu jeda kunci sementara 30 detik
+      expect(guard.verifyPasscode('000000'), isFalse);
+      expect(guard.verifyPasscode('123456'), isFalse);
+      expect(guard.verifyPasscode('999999'), isFalse);
+      expect(guard.verifyPasscode('111111'), isFalse);
+      expect(guard.isLockedOut, isFalse);
+
+      // Percobaan ke-5 mengaktifkan lockout
+      expect(guard.verifyPasscode('222222'), isFalse);
+      expect(guard.isLockedOut, isTrue);
+      expect(guard.remainingLockoutSeconds, greaterThan(0));
+
+      // Meski kode benar dimasukkan saat masih dalam masa lockout, tetap ditolak
+      expect(guard.verifyPasscode('202627'), isFalse);
+
+      // Setelah reset/jeda selesai, kode pengawas yang sah diterima
+      guard.resetForTesting();
+      expect(guard.verifyPasscode('202627'), isTrue);
+      expect(guard.failedAttempts, equals(0));
+    });
+
+    test('Validasi Filter Navigasi Hotspot (Subframe Diizinkan & Pencarian Google Diblokir)', () {
+      const allowed = ApiClient.defaultAllowedExamDomains;
+
+      // 1. Subframe & about:blank wajib diizinkan agar tidak deadlock saat pakai Hotspot
+      expect(
+        ExamSessionScreen.isNavigationAllowed('about:blank', isMainFrame: false, allowedDomains: allowed),
+        isTrue,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed(
+          'https://accounts.youtube.com/accounts/CheckConnection?pmpo=https://docs.google.com',
+          isMainFrame: false,
+          allowedDomains: allowed,
+        ),
+        isTrue,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed(
+          'https://challenges.cloudflare.com/turnstile/v0/api.js',
+          isMainFrame: false,
+          allowedDomains: allowed,
+        ),
+        isTrue,
+      );
+
+      // 2. Main-frame Google Forms, s.id, dan FormQR Studio diizinkan
+      expect(
+        ExamSessionScreen.isNavigationAllowed(
+          'https://docs.google.com/forms/d/e/1FAIpQLSc_Test/viewform',
+          isMainFrame: true,
+          allowedDomains: allowed,
+        ),
+        isTrue,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed('https://s.id/informatika7', isMainFrame: true, allowedDomains: allowed),
+        isTrue,
+      );
+
+      // 3. Halaman pencarian Google, situs eksternal main-frame, dan skema aplikasi lain diblokir
+      expect(
+        ExamSessionScreen.isNavigationAllowed(
+          'https://www.google.com/search?q=kunci+jawaban',
+          isMainFrame: true,
+          allowedDomains: allowed,
+        ),
+        isFalse,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed('https://www.google.com/', isMainFrame: true, allowedDomains: allowed),
+        isFalse,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed('https://youtube.com/watch?v=123', isMainFrame: true, allowedDomains: allowed),
+        isFalse,
+      );
+      expect(
+        ExamSessionScreen.isNavigationAllowed('whatsapp://send?text=soal', isMainFrame: true, allowedDomains: allowed),
+        isFalse,
+      );
     });
   });
 }

@@ -1,5 +1,5 @@
 // ExamBar: Bar Tipis Status Ujian (Apple HIG & UI/UX Pro Max)
-// Menampilkan status mode terkunci, status koneksi, dan tombol hubungi pengawas
+// Menampilkan status koneksi nyata, status mode terkunci, muat ulang soal, dan keluar darurat pengawas
 
 import 'package:flutter/material.dart';
 import '../../core/theme/tokens.g.dart';
@@ -12,12 +12,14 @@ enum ConnectionStatus {
 
 class ExamBar extends StatelessWidget implements PreferredSizeWidget {
   final ConnectionStatus connectionStatus;
-  final VoidCallback onCallProctor;
+  final VoidCallback? onReloadForm;
+  final VoidCallback onEmergencyExit;
 
   const ExamBar({
     super.key,
     required this.connectionStatus,
-    required this.onCallProctor,
+    this.onReloadForm,
+    required this.onEmergencyExit,
   });
 
   @override
@@ -30,7 +32,7 @@ class ExamBar extends StatelessWidget implements PreferredSizeWidget {
 
     return Container(
       height: preferredSize.height,
-      padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space3),
+      padding: const EdgeInsets.symmetric(horizontal: NetriSpacing.space2),
       decoration: BoxDecoration(
         color: isDark ? NetriColors.surfaceDark : NetriColors.surfaceLight,
         border: Border(
@@ -45,43 +47,69 @@ class ExamBar extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Status Koneksi (StatusPill)
+            // Status Koneksi Nyata (StatusPill)
             _buildStatusPill(context),
 
-            // Indikator Status Ujian Terkunci (Gantikan timer otomatis)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: NetriColors.brandLight.withAlpha(20),
-                borderRadius: BorderRadius.circular(NetriRadius.full),
-                border: Border.all(color: NetriColors.brandLight.withAlpha(50)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock_rounded, size: 14, color: NetriColors.brandLight),
-                  SizedBox(width: 5),
-                  Text(
-                    'Exam NETRI (Terkunci)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: NetriColors.brandLight,
+            const SizedBox(width: 6),
+
+            // Indikator Status Ujian Terkunci (dibungkus Flexible agar aman di layar sempit)
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: NetriColors.brandLight.withAlpha(20),
+                  borderRadius: BorderRadius.circular(NetriRadius.full),
+                  border: Border.all(color: NetriColors.brandLight.withAlpha(50)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_rounded, size: 14, color: NetriColors.brandLight),
+                    SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        'Exam NETRI (Terkunci)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: NetriColors.brandLight,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
-            // Aksi Hubungi Pengawas (Tombol Selesai ditiadakan agar siswa hanya bisa selesai via kirim form)
-            IconButton(
-              tooltip: 'Hubungi Pengawas',
-              icon: const Icon(Icons.help_outline_rounded, size: 22),
-              onPressed: onCallProctor,
-              constraints: const BoxConstraints(
-                minWidth: NetriExamMetrics.minTouchTarget,
-                minHeight: NetriExamMetrics.minTouchTarget,
-              ),
+            // Aksi Muat Ulang Soal & Keluar Darurat Pengawas (area sentuh minimal 44x44)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onReloadForm != null)
+                  IconButton(
+                    tooltip: 'Muat Ulang Soal',
+                    icon: const Icon(Icons.refresh_rounded, size: 22),
+                    onPressed: onReloadForm,
+                    constraints: const BoxConstraints(
+                      minWidth: NetriExamMetrics.minTouchTarget,
+                      minHeight: NetriExamMetrics.minTouchTarget,
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Keluar Darurat (Pengawas)',
+                  icon: const Icon(
+                    Icons.admin_panel_settings_rounded,
+                    size: 22,
+                    color: NetriColors.stateDangerLight,
+                  ),
+                  onPressed: onEmergencyExit,
+                  constraints: const BoxConstraints(
+                    minWidth: NetriExamMetrics.minTouchTarget,
+                    minHeight: NetriExamMetrics.minTouchTarget,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

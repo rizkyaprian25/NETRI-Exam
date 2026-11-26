@@ -2,6 +2,7 @@
 // Mendukung fallback mock lokal agar UI dapat berjalan mandiri (Contract-Driven)
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../contracts/models.dart';
 import '../storage/offline_queue.dart';
@@ -13,6 +14,29 @@ class ApiClient {
     // Menghubungkan callback pengiriman antrean offline ke method postViolation
     OfflineViolationQueue().sendEventCallback = postViolation;
   }
+
+  /// Daftar domain standar yang diizinkan untuk Google Forms, infrastruktur Google, dan pemendek tautan
+  static const List<String> defaultAllowedExamDomains = [
+    'docs.google.com',
+    'forms.google.com',
+    'accounts.google.com',
+    'google.com',
+    'googleapis.com',
+    'gstatic.com',
+    'googleusercontent.com',
+    'ggpht.com',
+    'pki.goog',
+    'recaptcha.net',
+    'forms.gle',
+    's.id',
+    'gg.gg',
+    'bit.ly',
+    'rizkyaprian25.github.io',
+  ];
+
+  /// Override khusus untuk pengujian otomatis guna menyimulasikan kondisi hotspot offline/online
+  @visibleForTesting
+  bool? debugMockInternetConnected;
 
   // Token otentikasi sesi aktif
   String? _authToken;
@@ -95,31 +119,56 @@ class ApiClient {
       formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLScX_SAMPLE_FORM/viewform?embedded=true',
       deadlineAt: now.add(const Duration(minutes: 90)),
       serverCurrentTime: now,
-      allowedDomains: const [
-        'docs.google.com',
-        'forms.google.com',
-        'google.com',
-        'gstatic.com',
-        'googleusercontent.com',
-        'forms.gle',
-        's.id',
-        'gg.gg',
-        'bit.ly',
-        'rizkyaprian25.github.io',
-      ],
+      allowedDomains: defaultAllowedExamDomains,
     );
   }
 
-  /// Mengirim heartbeat status koneksi dan baterai setiap 20 detik
+  /// Memeriksa ketersediaan akses internet nyata (khususnya saat terhubung ke Hotspot/Tethering)
+  Future<bool> checkInternetReachability({
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    if (debugMockInternetConnected != null) {
+      return debugMockInternetConnected!;
+    }
+
+    // Pada lingkungan flutter test, socket keluar diblokir sehingga dikembalikan true agar stabil
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return true;
+    }
+
+    if (kIsWeb) return true;
+
+    try {
+      final socket = await Socket.connect(
+        'docs.google.com',
+        443,
+        timeout: timeout,
+      );
+      socket.destroy();
+      return true;
+    } catch (_) {
+      try {
+        final lookup =
+            await InternetAddress.lookup('google.com').timeout(timeout);
+        return lookup.isNotEmpty && lookup.first.rawAddress.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  /// Mengirim heartbeat status koneksi nyata dan baterai setiap 20 detik
   Future<bool> sendHeartbeat({
     required String sessionId,
     required int batteryLevel,
     required bool isCharging,
   }) async {
     try {
-      // Heartbeat ringan tanpa blocking
-      debugPrint('[ApiClient] Heartbeat terkirim: sesi $sessionId, baterai $batteryLevel%');
-      return true;
+      final reachable = await checkInternetReachability();
+      debugPrint(
+        '[ApiClient] Heartbeat: sesi $sessionId, baterai $batteryLevel%, online=$reachable',
+      );
+      return reachable;
     } catch (e) {
       return false;
     }

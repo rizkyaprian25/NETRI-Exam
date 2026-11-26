@@ -7,9 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:netri_exam/app.dart';
 import 'package:netri_exam/contracts/models.dart';
+import 'package:netri_exam/core/network/api_client.dart';
 import 'package:netri_exam/features/auth/login_screen.dart';
 import 'package:netri_exam/features/exam_session/exam_session_screen.dart';
 import 'package:netri_exam/features/exam_session/lock_screen_dialog.dart';
+import 'package:netri_exam/features/lockdown/emergency_exit_guard.dart';
 import 'package:netri_exam/features/lockdown/lockdown_service.dart';
 import 'package:netri_exam/features/result/result_screen.dart';
 
@@ -23,6 +25,8 @@ void main() {
   setUp(() {
     channelCallLog.clear();
     channelArguments.clear();
+    EmergencyExitGuard.instance.resetForTesting();
+    ApiClient().debugMockInternetConnected = null;
 
     // Mock platform channel native untuk lockdown & sirine
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -527,6 +531,95 @@ void main() {
         expect(sessionScreen.session.formUrl, equals('https://s.id/ujian7'));
         expect(sessionScreen.session.allowedDomains, contains('s.id'));
         expect(sessionScreen.session.allowedDomains, contains('gg.gg'));
+      },
+    );
+
+    testWidgets(
+      'Skenario Keluar Darurat Pengawas (202627): Kode Salah Ditolak & Kode Valid Memutus Sematan Tanpa Sirine',
+      (WidgetTester tester) async {
+        final now = DateTime.now();
+        final session = ActiveExamSession(
+          sessionId: 'ses_emergency_exit_test',
+          formUrl: 'https://forms.gle/emergencyTest123',
+          deadlineAt: now.add(const Duration(hours: 12)),
+          durationMinutes: 0,
+          serverCurrentTime: now,
+          allowedDomains: ApiClient.defaultAllowedExamDomains,
+          proctorPin: '',
+          mapel: 'Ujian Uji Darurat',
+          kelas: 'XII',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ExamSessionScreen(session: session),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+        channelCallLog.clear();
+
+        // 1. Tekan ikon Keluar Darurat Pengawas pada ExamBar
+        final emergencyIcon = find.byTooltip('Keluar Darurat (Pengawas)');
+        expect(emergencyIcon, findsOneWidget);
+        await tester.tap(emergencyIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Keluar Darurat (Pengawas)'), findsOneWidget);
+
+        // 2. Uji passcode salah ('111111') -> harus ditolak dan tetap di lembar ujian
+        final passcodeField = find.byType(TextField).last;
+        await tester.enterText(passcodeField, '111111');
+        final unlockButton = find.widgetWithText(ElevatedButton, 'Buka Kunci & Keluar');
+        await tester.tap(unlockButton);
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Kode darurat salah'), findsOneWidget);
+        expect(find.byType(ExamSessionScreen), findsOneWidget);
+
+        // 3. Masukkan passcode pengawas yang sah ('202627') -> sematan putus, keluar tanpa sirine
+        channelCallLog.clear();
+        await tester.enterText(passcodeField, '202627');
+        await tester.tap(unlockButton);
+        await tester.pumpAndSettle();
+
+        expect(channelCallLog, contains('unpinScreen'));
+        expect(channelCallLog, contains('disableSecureWindow'));
+        expect(channelCallLog, isNot(contains('startAlarmSound')));
+        expect(find.byType(LoginScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Skenario Pra-Ujian Hotspot Tanpa Internet: Peringatkan & Tolak Memulai Ujian Sebelum Layar Disematkan',
+      (WidgetTester tester) async {
+        ApiClient().debugMockInternetConnected = false;
+
+        await tester.pumpWidget(const NetriExamApp());
+        await tester.pumpAndSettle();
+
+        final urlField = find.byType(TextField).first;
+        await tester.enterText(urlField, 'https://s.id/ujian-hotspot');
+
+        final startExamButton = find.widgetWithText(ElevatedButton, 'Mulai Ujian');
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        // Pastikan peringatan internet Hotspot muncul dan requestLockTask belum dipanggil
+        expect(
+          find.textContaining('Koneksi internet tidak terdeteksi pada Hotspot/Wi-Fi Anda!'),
+          findsOneWidget,
+        );
+        expect(channelCallLog, isNot(contains('requestLockTask')));
+        expect(find.byType(ExamSessionScreen), findsNothing);
+
+        // Setelah Hotspot terhubung kembali, ujian dapat dilanjutkan
+        ApiClient().debugMockInternetConnected = true;
+        await tester.tap(startExamButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Mode Ujian Ketat (Anti-Curang)'), findsOneWidget);
       },
     );
   });

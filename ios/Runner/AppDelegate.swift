@@ -29,7 +29,7 @@ import AVFoundation
         self.disableIosLockdown()
         result(true)
       case "startAlarmSound":
-        let durationMs = (call.arguments as? [String: Any])?["durationMs"] as? Int ?? 5000
+        let durationMs = (call.arguments as? [String: Any])?["durationMs"] as? Int ?? 15000
         self.startIosAlarmSound(durationMs: durationMs)
         result(true)
       case "stopAlarmSound":
@@ -128,7 +128,7 @@ import AVFoundation
   }
 
   @objc private func handleScreenshotTaken() {
-    startIosAlarmSound(durationMs: 5000)
+    startIosAlarmSound(durationMs: 15000)
     lockdownChannel?.invokeMethod("onScreenshotDetected", arguments: nil)
   }
 
@@ -140,7 +140,7 @@ import AVFoundation
     if #available(iOS 11.0, *) {
       if UIScreen.main.isCaptured {
         showPrivacyShield()
-        startIosAlarmSound(durationMs: 5000)
+        startIosAlarmSound(durationMs: 15000)
         lockdownChannel?.invokeMethod("onScreenshotDetected", arguments: "screen_recording")
       } else {
         removePrivacyShield()
@@ -151,7 +151,7 @@ import AVFoundation
   @objc private func handleAppWillResignActive() {
     // Seketika tutup layar dengan perisai hitam pekat agar soal tidak bisa diintip saat gesture keluar
     showPrivacyShield()
-    startIosAlarmSound(durationMs: 5000)
+    startIosAlarmSound(durationMs: 15000)
     lockdownChannel?.invokeMethod("onUserLeaveHint", arguments: nil)
   }
 

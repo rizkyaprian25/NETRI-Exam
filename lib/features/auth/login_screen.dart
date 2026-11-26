@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import '../../contracts/models.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/tokens.g.dart';
 import '../exam_session/exam_session_screen.dart';
 import '../lockdown/lockdown_service.dart';
@@ -23,13 +24,10 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       'Terdeteksi aplikasi mengambang (Floating App / Split-Screen) aktif di layar! '
       'Harap tutup semua jendela mengambang (seperti Chrome) terlebih dahulu sebelum memulai ujian.';
 
-  // Daftar domain yang sah untuk formulir ujian dan pemendek tautan terpercaya
-  static const List<String> _allowedExamDomains = [
+  // Daftar domain masuk yang sah untuk formulir Google Forms dan pemendek tautan
+  static const List<String> _inputEntryDomains = [
     'docs.google.com',
     'forms.google.com',
-    'google.com',
-    'gstatic.com',
-    'googleusercontent.com',
     'forms.gle',
     's.id',
     'gg.gg',
@@ -51,11 +49,15 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (uri == null || uri.host.isEmpty) return null;
 
     final host = uri.host.toLowerCase();
-    final isAllowed = _allowedExamDomains.any(
+    final path = uri.path.toLowerCase();
+    final isEntryDomain = _inputEntryDomains.any(
       (domain) => host == domain || host.endsWith('.$domain'),
     );
+    final isGoogleFormPath =
+        (host == 'google.com' || host == 'www.google.com') &&
+        path.startsWith('/forms');
 
-    return isAllowed ? trimmed : null;
+    return (isEntryDomain || isGoogleFormPath) ? trimmed : null;
   }
 
   @override
@@ -181,6 +183,18 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (!isClear) {
       setState(() {
         _errorMessage = _floatingAppErrorMessage;
+      });
+      return;
+    }
+
+    // Pemeriksaan koneksi internet nyata pra-ujian (mencegah siswa terkunci di layar kosong saat Hotspot tanpa kuota)
+    final hasInternet = await ApiClient().checkInternetReachability();
+    if (!mounted) return;
+    if (!hasInternet) {
+      setState(() {
+        _errorMessage =
+            'Koneksi internet tidak terdeteksi pada Hotspot/Wi-Fi Anda! '
+            'Pastikan Hotspot memiliki kuota aktif dan tidak terhalang halaman login operator sebelum memulai ujian.';
       });
       return;
     }
@@ -345,7 +359,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       deadlineAt: now.add(const Duration(hours: 12)),
       durationMinutes: 0,
       serverCurrentTime: now,
-      allowedDomains: _allowedExamDomains,
+      allowedDomains: ApiClient.defaultAllowedExamDomains,
       proctorPin: '', // Tanpa PIN
       mapel: 'Ujian Google Form',
       kelas: 'Umum',
